@@ -1,0 +1,17 @@
+{
+  "name": "t3-code-theme",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Unofficial T3 Code dark theme and model picker for Hermes Desktop",
+  "license": "MIT",
+  "packageManager": "pnpm@11.18.0",
+  "scripts": {
+    "check": "node --check desktop/plugin.js",
+    "test": "node --check desktop/plugin.js && for t in tests/*.cjs; do node \"$t\" || exit 1; done",
+    "install-plugin": "sh scripts/install.sh",
+    "bench": "node tools/bench-streaming.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
