@@ -7,9 +7,7 @@
   "packageManager": "pnpm@11.18.0",
   "scripts": {
     "check": "node --check desktop/plugin.js",
-    "test": "node --check desktop/plugin.js && for t in tests/*.cjs; do node \"$t\" || exit 1; done",
-    "install-plugin": "sh scripts/install.sh",
-    "bench": "node tools/bench-streaming.cjs"
+    "test": "node --check desktop/plugin.js && for t in tests/*.cjs; do node \"$t\" || exit 1; done"
   },
   "devDependencies": {
     "playwright": "1.63.0"
