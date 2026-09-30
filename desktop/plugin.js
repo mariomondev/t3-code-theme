@@ -230,8 +230,11 @@ const css = `
   width: 300px; height: 192px; max-width: 100%;
 }
 :root[data-hermes-theme="t3-code-theme"] :is([data-slot="aui_directive-image"], [data-slot="aui_embedded-image"]) img { object-fit: cover; }
-/* Chat-area titlebar uses the canvas (#0a0a0a), not the sidebar black. */
-:root[data-hermes-theme="t3-code-theme"] [data-tree-group]:not(:has([data-tour="sessions-sidebar"])) [data-panel-header] {
+/* Chat-area titlebar uses the canvas (#0a0a0a), not the sidebar black. Hermes
+   paints the tab strip inside it too, which would leave a black band that stops
+   short of the titlebar controls. */
+:root[data-hermes-theme="t3-code-theme"] [data-tree-group]:not(:has([data-tour="sessions-sidebar"])) [data-panel-header],
+:root[data-hermes-theme="t3-code-theme"] [data-tree-group]:not(:has([data-tour="sessions-sidebar"])) [data-panel-header] [data-zone-tabstrip] {
   background: var(--ui-editor-surface-background);
 }
 /* Attachment chips carry their own px-1. */
@@ -1570,7 +1573,8 @@ const DOM_HOOKS = [
     'panel header': '[data-window-top="true"]:has([data-chat-surface]) [data-panel-header]',
     'bottom statusbar': '[data-slot="statusbar"]'
   } },
-  { group: 'tab crumb', hud: false, anchor: '[data-panel-header] [role="tablist"]', hooks: {
+  // Pages such as Capabilities keep the tab strip without a chat: not drift.
+  { group: 'tab crumb', hud: false, anchor: '[data-window-top="true"]:has([data-chat-surface]) [data-panel-header] [role="tablist"]', hooks: {
     'tab session id': '[data-panel-header] [role="tab"][data-tree-tab]',
     'surface session anchor': '[data-chat-surface][data-session-anchor]',
     'composer bounds': '[data-chat-surface] > [data-slot="composer-bounds"]',

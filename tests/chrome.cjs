@@ -18,19 +18,19 @@ const tab=(id,title,active,dot)=>`<div role="tab" data-slot="${id==='sessions'?'
   <div class="pane-tab-content">${dot?`<span><span><span class="tab-key-hint-icon"><span>${dot}</span></span></span></span>`:''}<span class="label"><span class="uppercase">${title}</span></span></div>
   <span class="close-slot opacity-0"><button aria-label="Close" class="close">x</button></span></div>`;
 // Stand-ins for the Tailwind classes Hermes puts on these nodes (same specificity).
-const tabClasses='.tabs{display:flex}.h-full{position:relative;display:flex;flex-shrink:0;align-items:center;height:31px}[data-slot="pane-tab"][data-closeable]{--pane-tab-close-width:1.5rem}.pane-tab-content{display:flex;flex:1;min-width:0;max-width:100%;height:100%;align-items:center}.label{display:flex;min-width:0;overflow:hidden;padding:0 8px}.uppercase{display:block;white-space:nowrap}.close-slot{position:absolute;top:0;bottom:0;right:0;display:flex}.close{display:grid;place-items:center;width:var(--pane-tab-close-width)}.uppercase{font-size:9px;text-transform:uppercase}.opacity-0{opacity:0;pointer-events:none}';
+const tabClasses='.tabs{display:flex}.h-full{position:relative;display:flex;flex-shrink:0;align-items:center;height:31px}[data-slot="pane-tab"][data-closeable]{--pane-tab-close-width:1.5rem}.pane-tab-content{display:flex;flex:1;min-width:0;max-width:100%;height:100%;align-items:center}.label{display:flex;min-width:0;overflow:hidden;padding:0 8px}.uppercase{display:block;white-space:nowrap}.close-slot{position:absolute;top:0;bottom:0;right:0;display:flex}.close{display:grid;place-items:center;width:var(--pane-tab-close-width)}.uppercase{font-size:9px;text-transform:uppercase}.opacity-0{opacity:0;pointer-events:none}.zone{background:#000}';
 (async()=>{const browser=await chromium.launch();try{
 const page=await browser.newPage();
 await page.setContent(`<html data-hermes-theme="t3-code-theme"><head><style>${tabClasses}${layoutCss}${pickerCss}</style></head><body>
-<div data-tree-group="grp-main" data-window-top="true"><div data-panel-header><div role="tablist" class="tabs">
+<div data-tree-group="grp-main" data-window-top="true"><div data-panel-header><div data-zone-tabstrip="grp-main" class="zone"><div role="tablist" class="tabs">
   ${tab('workspace','Crear tema',false,'<span role="status" class="size-1.5 rounded-full"></span>')}
   ${tab('session-tile:t1','Describir proyecto',true,'<span class="size-1 rounded-full"></span>')}
   ${tab('session-tile:draft','New session',false,'<span class="size-1.5 rounded-full border"></span>')}
   ${tab('session-tile:t2','Not visited yet',false,'<span class="size-1 rounded-full"></span>')}
   ${tab('session-tile:t3','New session',false,'<span class="size-1.5 rounded-full border"></span>')}
   <span class="flex shrink-0 items-center"><button>+</button></span>
-</div></div>${pane('workspace','main',true,'<button data-tour="model-pill" data-t3-provider="anthropic"></button>')}${pane('session-tile:t1','tile:t1',false,'<button aria-label="Model · groq: llama" data-t3-provider="groq"></button>')}${pane('session-tile:draft','tile:draft',true)}</div>
-<div data-tree-group="grp-side"><div data-panel-header><div role="tablist">${tab('sessions','Sessions',true,'')}</div></div></div></body></html>`);
+</div></div></div>${pane('workspace','main',true,'<button data-tour="model-pill" data-t3-provider="anthropic"></button>')}${pane('session-tile:t1','tile:t1',false,'<button aria-label="Model · groq: llama" data-t3-provider="groq"></button>')}${pane('session-tile:draft','tile:draft',true)}</div>
+<div data-tree-group="grp-side"><div data-tour="sessions-sidebar"></div><div data-panel-header><div data-zone-tabstrip="grp-side" class="zone"><div role="tablist">${tab('sessions','Sessions',true,'')}</div></div></div></div></body></html>`);
 await page.addScriptTag({content:source.replace(/^import .*\n/gm,'').replace('export default','globalThis.plugin =')});
 const r=await page.evaluate(async()=>{
   const mut=v=>{const fns=[];return {v,get(){return this.v},set(x){this.v=x;fns.forEach(f=>f())},listen(f){fns.push(f);return()=>{}}}};
@@ -53,6 +53,8 @@ const r=await page.evaluate(async()=>{
       lead:e.querySelector('.pane-tab-content > span:first-child').matches(':has(.tab-key-hint-icon)')?getComputedStyle(e.querySelector('.pane-tab-content > span:first-child')).display:null,
       close:getComputedStyle(e.querySelector(':scope > span:last-child')).opacity,closeColor:getComputedStyle(e.querySelector(':scope > span:last-child > button')).color,overlap:(()=>{const text=e.querySelector('.uppercase').getBoundingClientRect(),x=e.querySelector(':scope > span:last-child > button').getBoundingClientRect();return text.right>x.left})(),before:getComputedStyle(e,'::before').maskImage.slice(0,30),slot:[getComputedStyle(e,'::before').width,getComputedStyle(e,'::before').animationName],titleX:Math.round(e.querySelector('.uppercase').getBoundingClientRect().left-e.getBoundingClientRect().left)}};
   out.tabs={primary:t('workspace'),tile:t('session-tile:t1'),draft:t('session-tile:draft'),unvisited:t('session-tile:t2'),unopenedDraft:t('session-tile:t3'),sidebar:t('sessions')};
+  // Hermes paints each tab strip with the sidebar black (bg-(--ui-sidebar-surface-background)).
+  out.strips=['grp-main','grp-side'].map(g=>getComputedStyle(document.querySelector(`[data-zone-tabstrip="${g}"]`)).backgroundColor);
   // Hermes unmounts the primary pane while another tab is active and may redraw its tab.
   document.querySelector('[data-session-anchor="workspace"]').parentElement.remove();
   const oldTab=document.querySelector('[data-tree-tab="workspace"]'),fresh=oldTab.cloneNode(true);for(const a of Array.from(fresh.attributes))if(a.name.startsWith('data-t3'))fresh.removeAttribute(a.name);fresh.removeAttribute('style');oldTab.replaceWith(fresh);
@@ -94,6 +96,7 @@ assert.equal(r.tile.chip,'Home server','Focused tile shows its own connection');
 assert.equal(r.tile.kind,'remote');
 assert.equal(r.primary.chip,'Local','Primary keeps the active connection, not the focused tile\'s');
 assert.equal(r.tile.pad,'40px','Transcript starts below the crumb bar');
+assert.deepEqual(r.strips,['rgb(10, 10, 10)','rgb(0, 0, 0)'],'Chat tab strip matches the canvas titlebar; the sidebar strip stays black');
 assert.equal(r.afterTheme,0,'Another theme removes every crumb, chip and tab mark');
 console.log('PASS tab layout: Codex-style chat tabs with per-pane provider icon, project-only crumb, per-pane Local/server chip, cleanup');
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});

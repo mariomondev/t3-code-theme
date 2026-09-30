@@ -27,6 +27,19 @@ const full=await page.evaluate(()=>checkDomHooks());
 assert.deepEqual(full.missing,[],'Current Hermes markup must pass with no misses');
 assert.deepEqual(full.checked.sort(),['chat header','composer','reasoning pill','thread'],'Only groups whose anchor is on screen are checked');
 
+// Capabilities and other pages keep the tab strip with no chat mounted: the
+// tab crumb hooks are not expected there.
+const crumb=await page.evaluate(()=>{
+  const at=html=>{const root=document.createElement('div');root.innerHTML=html;return checkDomHooks(root)};
+  const strip='<div data-panel-header><div role="tablist"><div role="tab" data-tree-tab="workspace"></div></div></div>';
+  const page=at(`<div data-window-top="true">${strip}</div>`);
+  const chat=at(`<div data-window-top="true">${strip}<div data-chat-surface></div></div>`);
+  return {page:page.checked.includes('tab crumb'),chat:chat.checked.includes('tab crumb'),chatMissing:chat.missing.filter(m=>m.startsWith('tab crumb'))};
+});
+assert.equal(crumb.page,false,'A tab strip without a chat is not checked for tab crumb hooks');
+assert.equal(crumb.chat,true,'A chat with a tab strip is');
+assert(crumb.chatMissing.includes('tab crumb: surface session anchor'),'and still reports a chat that lost its hooks');
+
 // Only a tile is mounted (the primary pane unmounts while another tab is active):
 // its pill has no data-tour, so the plugin's own mark must satisfy the hook.
 const tileOnly=await page.evaluate(()=>{const pill=document.querySelector('[data-tour="model-pill"]');pill.removeAttribute('data-tour');pill.setAttribute('data-t3-model-pill','');

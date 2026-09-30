@@ -1,10 +1,18 @@
 # T3 Code theme for Hermes Desktop
 
+![T3 Code theme in Hermes Desktop](docs/banner.png)
+
 Unofficial [Hermes Desktop](https://github.com/NousResearch/hermes-agent) plugin that ports the **standard T3 Code dark theme** (not T3 Code's optional purple "T3 Chat" theme) and adds a T3-style model picker. Hermes lists it as "T3 Code" in the theme picker.
 
 Not affiliated with T3 Tools or Nous Research.
 
 Everything is scoped to `:root[data-hermes-theme="t3-code-theme"]`. Selecting another theme restores Hermes' native look, and disabling the plugin removes every stylesheet, listener, observer and injected element.
+
+## Screenshots
+
+| Chat, tabs and sidebar | Model picker | Sidebar cards |
+|---|---|---|
+| ![Chat with Codex-style tabs and T3 sidebar cards](docs/chat.png) | ![T3-style model picker with a provider rail](docs/model-picker.png) | ![Sidebar thread cards with project badge, branch and provider icon](docs/sidebar.png) |
 
 ## Install
 
@@ -22,7 +30,7 @@ This plugin hooks into Hermes Desktop's markup (data slots, Tailwind classes, ro
 
 | | Version | Verified |
 |---|---|---|
-| Hermes | v0.21.5+3666.gfb7eda7, commit `fb7eda7416ed2004f906a57bb3e3ad2e92cb8e93` (built 2026-09-27) | 2026-09-27 |
+| Hermes | v0.21.5+4929.g5c08ad6, commit `5c08ad68f7ec488057880752f8071cee154a6e60` (built 2026-09-30) | 2026-09-30 |
 | T3 Code | `pingdotgg/t3code` commit `de251fc2971a884cb5b1305ba4daf309dc8cccb0` | 2026-09-27 |
 
 ## Develop
@@ -42,7 +50,7 @@ When a Hermes update breaks something:
 
 1. Compare the installed Hermes with the table above: `hermes --version`, or `commit` in `~/.hermes/hermes-agent/install-stamp.json`.
 2. Look for hook misses: `grep "t3-code-theme" ~/.hermes/logs/desktop.log | tail`.
-3. Diff the Hermes files the theme depends on between the verified commit and the installed one, e.g. `git -C ~/.hermes/hermes-agent diff fb7eda7416e HEAD --stat -- apps/desktop/src/app/shell apps/desktop/src/components/ui apps/desktop/src/app/chat`.
+3. Diff the Hermes files the theme depends on between the verified commit and the installed one, e.g. `git -C ~/.hermes/hermes-agent diff 5c08ad68f7e HEAD --stat -- apps/desktop/src/app/shell apps/desktop/src/components/ui apps/desktop/src/app/chat`.
 4. After fixing and checking the live app, update the table.
 
 ## What it does
@@ -52,7 +60,7 @@ When a Hermes update breaks something:
 - T3 Code dark palette from source: canvas `#0a0a0a`, sidebar `#000000`, surfaces `#111111`, primary `#346bf1`, system font stacks.
 - One 48rem (768px) reading column shared by the thread, the user bubble and the composer. Assistant text is inset 20px.
 - User bubble: max 80% wide, 18px radius, 12px padding. Hermes' restore/stop button moves out of the bubble to a T3-style hover row under it (4px gap, 24px tall, right-aligned); the row always keeps its space, so hovering never shifts the thread. Attachments sit right-aligned under the bubble as fixed 300x192 tiles with a 12px radius, so a loading image never resizes the row.
-- Chat titlebar uses the canvas color instead of the sidebar black.
+- Chat titlebar and its tab strip use the canvas color instead of the sidebar black.
 - Portaled menus use T3's glass surface (blur 16px, saturate 1.08, 10px radius, dark shadow).
 - Confirm dialogs (a Hermes dialog whose body holds a header and a footer) follow T3's AlertDialog: dialog-glass popup with an 18px radius and an 8% white border, a 4px-blur backdrop, 24px header, 20px semibold title, 14px muted description, and the footer as a muted bar with a top border. Cancel is T3's outline button and Confirm the primary blue (red when destructive), 32px tall with an 8px radius. The close X is hidden, as in T3; Escape and Cancel still dismiss. Other dialogs keep Hermes' layout.
 
@@ -149,11 +157,9 @@ Packaged Hermes has no CDP port. `tools/dom-probe/` holds a throwaway pattern: a
 python3 tools/dom-probe/receiver.py &                         # listens on 127.0.0.1:18794, writes out.jsonl
 mkdir -p ~/.hermes/desktop-plugins/t3-dom-probe
 cp tools/dom-probe/probe.js ~/.hermes/desktop-plugins/t3-dom-probe/plugin.js
-# wait for out.jsonl, then remove the probe and stop the receiver
-rm -rf ~/.hermes/desktop-plugins/t3-dom-probe
 ```
 
-Always remove the probe directory and stop the receiver afterwards.
+When `out.jsonl` has what you need, delete the `t3-dom-probe` folder from `~/.hermes/desktop-plugins/` and stop the receiver. Never leave the probe installed.
 
 ## Sources and licenses
 
