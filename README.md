@@ -1,7 +1,7 @@
 <h1 align="center">T3 Code theme for Hermes Desktop</h1>
 
 <p align="center">
-  <img src="docs/banner.png" alt="T3 Code theme in Hermes Desktop" width="840">
+  <img src="docs/banner.jpg" alt="T3 Code theme in Hermes Desktop" width="840">
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@ It shows up as "T3 Code" in Hermes' theme picker. An unofficial plugin, not affi
 hermes plugins install mariomondev/t3-code-theme
 ```
 
-Then open Hermes Desktop, go to **Capabilities > Plugins** and turn on **T3 Code dark theme**. The desktop part of a plugin installs turned off.
+Run it on the computer where Hermes Desktop runs, even if Desktop connects to a remote Hermes. Then open Hermes Desktop, go to **Capabilities > Plugins** and turn on **T3 Code dark theme**. If it is not listed yet, click the refresh button at the top right of that page.
 
 Update with `hermes plugins update t3-code-theme` and remove with `hermes plugins remove t3-code-theme`. Choosing another theme restores Hermes' own look.
 

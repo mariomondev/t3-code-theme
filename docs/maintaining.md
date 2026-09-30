@@ -37,8 +37,6 @@ cp desktop/plugin.js ~/.hermes/desktop-plugins/t3-code-theme/plugin.js
 3. Fix the selectors, add or update a fixture test in `tests/`, run `pnpm test`, and check the live app with the copy above.
 4. Update the verified version in the README.
 
-Packaged Hermes has no DevTools port. To measure the live app, install a throwaway desktop plugin that posts element geometry and computed styles (never message text) to a small receiver on 127.0.0.1, then delete it.
-
 ## Rules the plugin keeps
 
 - Everything is scoped to `:root[data-hermes-theme="t3-code-theme"]`, and disabling the plugin removes every stylesheet, listener, observer and element it added.
