@@ -3,9 +3,9 @@ const {chromium} = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const fs = require('node:fs'), assert = require('node:assert/strict'), vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname,'../desktop/plugin.js'),'utf8');
 let theme;
-const sandbox={sdk:{},THEMES_AREA:'themes',CHAT_EMPTY_AREA:'chat.empty',requestTheme(){throw Error('Must not reactivate')},document:{createElement:()=>({dataset:{},remove(){}}),head:{append(){}}}};
+const sandbox={sdk:{},THEMES_AREA:'themes',CHAT_EMPTY_AREA:'chat.empty',requestTheme(){throw Error('Must not reactivate')}};
 vm.createContext(sandbox);vm.runInContext(source.replace(/^import .*\n/gm,'').replace('export default','globalThis.plugin ='),sandbox);
-sandbox.plugin.register({register: entry=>{if(entry.area==='themes')theme=entry.data},onDispose(){},storage:{get:()=>true,set(){throw Error('Must not modify preferences')}}});
+sandbox.plugin.register({register: entry=>{if(entry.area==='themes')theme=entry.data},onDispose(){},storage:{get:(k,d)=>k==='installed'?true:d,set(){throw Error('Must not modify preferences')}}});
 (async()=>{const browser=await chromium.launch();try{
 assert.equal(theme.colors.background,'#0a0a0a','T3 canvas, not approximate zinc');
 assert.equal(theme.colors.sidebarBackground,'#000000');

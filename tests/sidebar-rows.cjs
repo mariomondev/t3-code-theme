@@ -66,18 +66,21 @@ console.log('PASS sidebar card: an overflowing list never clips a card');
 await page.addScriptTag({content:source.replace(/^import .*\n/gm,'').replace('export default','globalThis.plugin =')});
 const glyph=await page.evaluate(async()=>{
   // jsx stand-in: components run inline, elements come back as plain objects.
-  globalThis.jsx=(type,props)=>typeof type==='function'?type(props):{type,props};
+  globalThis.jsx=(type,props)=>typeof type==='function'?type(props):{type,props};globalThis.useEffect=fn=>{fn()};
   const store=v=>{const fns=[];return {get:()=>v,set(x){v=x;fns.forEach(f=>f(x))},listen(f){fns.push(f);return()=>{}}}};
   const active=store(null),regs=[],disposers=[];
-  const sdk={atom:store,useValue:a=>a.get(),SESSION_ROW_AREAS:{leading:'sessionRow.leading',trailing:'sessionRow.trailing'},
+  window.painted='t3-code-theme-dark';
+  const sdk={atom:store,useValue:a=>a.get(),useTheme:()=>({theme:{name:window.painted}}),SESSION_ROW_AREAS:{leading:'sessionRow.leading',trailing:'sessionRow.trailing'},
     host:{state:{connectionId:active,focusedStoredSessionId:store('a')},
       connections:async()=>[{id:'local',kind:'local',label:'This device'},{id:'srv',kind:'remote',label:'Home server'}],
-      listPersistedSessions:async(route,opts)=>{if(opts.profile!=='all')throw new Error('needs the unified list');
+      listPersistedSessions:async(route,opts)=>{window.reads=(window.reads||0)+1;if(opts.profile!=='all')throw new Error('needs the unified list');
         return {sessions:[{id:'loc1',git_repo_root:'/Users/me/work/acme/',git_branch:'main',billing_provider:'openai-codex'},
           {id:'rem1',connection_id:'srv',cwd:'/home/me'},{id:'tip2',_lineage_root_id:'rem2',connection_id:'srv'}]}}}};
   installRowCard({register:r=>regs.push(r),onDispose:fn=>disposers.push(fn)},sdk);
   await new Promise(r=>setTimeout(r,20));
   const reg=area=>regs.find(r=>r.area===area);
+  // Nothing is read until a row is on screen under this theme; the first row asks for the list.
+  const readsAtInstall=window.reads||0;reg('sessionRow.leading').data.render({sessionId:'loc1'});await new Promise(r=>setTimeout(r,20));
   const foot=id=>reg('sessionRow.trailing').data.render({sessionId:id}).props.children;
   const badge=id=>reg('sessionRow.leading').data.render({sessionId:id});
   const machine=id=>foot(id)[1]?.props?.title??null;
@@ -85,7 +88,11 @@ const glyph=await page.evaluate(async()=>{
     branch:foot('loc1')[0].props.children,provider:foot('loc1')[2]?.props?.['data-t3-row-provider'],noProvider:foot('rem1')[2],
     badge:badge('loc1').props.children,homeBadge:badge('rem1').props['data-t3-row-badge'],unknownBadge:badge('new')};
   active.set('srv');out.unknownOnServer=machine('new');
-  disposers.forEach(fn=>fn());out.styleRemoved=!document.querySelector('style[data-t3-chat="row-card"]');
+  // A row the list never returns is asked for once more, not on every render.
+  out.readsAtInstall=readsAtInstall;for(let i=0;i<5;i++)badge('new');await new Promise(r=>setTimeout(r,20));out.reads=window.reads;
+  window.painted='nous-dark';active.set('other');out.otherTheme=[reg('sessionRow.trailing').data.render({sessionId:'loc1'}),badge('loc1')];
+  await new Promise(r=>setTimeout(r,20));out.readsOtherTheme=window.reads-out.reads;
+  disposers.forEach(fn=>fn());
   return out;
 });
 assert.equal(glyph.local,null,'A local chat carries no machine marker');
@@ -99,6 +106,9 @@ assert.equal(glyph.noProvider,null);
 assert.equal(glyph.badge,'AC','The badge is the repo root\'s initials, the key Hermes groups projects by');
 assert.equal(glyph.homeBadge,'home','A chat outside any repo gets the Home badge Hermes labels it with');
 assert.equal(glyph.unknownBadge,null,'No badge until the row is known, never a guessed project');
-assert(glyph.styleRemoved,'Dispose removes the row stylesheet');
-console.log('PASS sidebar card data: badge, branch, provider, remote-only machine glyph, lineage ids, cleanup');
+assert.deepEqual(glyph.otherTheme,[null,null],'Under another theme the rows render nothing');
+assert.equal(glyph.readsAtInstall,0,'The session list is not read until a row renders under this theme');
+assert(glyph.reads<=3,`An unlisted row must not re-read the list on every render, got ${glyph.reads} reads`);
+assert.equal(glyph.readsOtherTheme,0,'Under another theme the list is never read, even when the connection changes');
+console.log('PASS sidebar card data: badge, branch, provider, remote-only machine glyph, lineage ids, theme scope');
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});

@@ -1,6 +1,6 @@
 # Maintaining the theme
 
-The whole plugin is `desktop/plugin.js`, loaded by Hermes as is. It targets Hermes Desktop's markup: data slots, Tailwind classes and row structure. Hermes changes them without notice, so most maintenance is catching up after a Hermes update.
+The whole plugin is `desktop/plugin.js`, loaded by Hermes as is. Most of it is a stylesheet that targets Hermes Desktop's markup: data slots, Tailwind classes and row structure. Hermes changes them without notice, so most maintenance is catching up after a Hermes update.
 
 ## Test
 
@@ -20,14 +20,7 @@ cp desktop/plugin.js ~/.hermes/desktop-plugins/t3-code-theme/plugin.js
 
 ## After a Hermes update
 
-1. Open a chat and the model picker once, then look for missing hooks:
-
-   ```sh
-   grep "t3-code-theme" ~/.hermes/logs/desktop.log | tail
-   ```
-
-   `DOM_HOOKS` in `desktop/plugin.js` lists every selector the theme relies on, by group. Each group is checked the first time it is on screen, and misses are logged and shown once as a warning toast.
-
+1. Open a chat, a split tab, an empty chat, the sidebar in card style and a confirm dialog, and compare them with the screenshots in the README.
 2. See what changed in Hermes since the last verified commit (in the README):
 
    ```sh
@@ -39,6 +32,6 @@ cp desktop/plugin.js ~/.hermes/desktop-plugins/t3-code-theme/plugin.js
 
 ## Rules the plugin keeps
 
-- Everything is scoped to `:root[data-hermes-theme="t3-code-theme"]`, and disabling the plugin removes every stylesheet, listener, observer and element it added.
-- The model picker only restyles and extends Hermes' own menu. Selecting a model always goes through Hermes' handlers, so confirmations, presets and the owning session stay correct. When the picker cannot tell which session it belongs to, it stays native.
-- The plugin reads data Hermes already loaded (the model catalog cache and persisted sessions). It makes no model switches, auth calls or polling of its own.
+- **Plugin SDK only.** The plugin extends Hermes through SDK areas: the theme (with its `customCSS`), the model pill label (kept in step with the theme by a component in the composer's top slot that draws nothing), the session row slots and the empty chat slot. Its code never uses `document` or `window`, queries or observes the page, adds listeners or nodes, or reads Hermes' caches. `tests/sdk-only.cjs` enforces this. If the theme needs something CSS and the SDK cannot do, ask for the slot or hook in an issue on `NousResearch/hermes-agent` instead of patching the page.
+- **Scoped.** Every CSS rule starts with `:root[data-hermes-theme="t3-code-theme"]`, and every contribution renders nothing under another theme.
+- **No data of its own.** The sidebar rows read the session list and the connections through the SDK, only while the theme is selected and a row is on screen. The plugin makes no model switches or auth calls.

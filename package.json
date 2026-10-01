@@ -1,8 +1,8 @@
 {
   "name": "t3-code-theme",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
-  "description": "Unofficial T3 Code dark theme and model picker for Hermes Desktop",
+  "description": "Unofficial T3 Code dark theme for Hermes Desktop",
   "license": "MIT",
   "packageManager": "pnpm@11.18.0",
   "scripts": {

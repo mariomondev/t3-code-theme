@@ -1,6 +1,6 @@
 name: t3-code-theme
-version: 0.4.1
-description: Unofficial T3 Code dark theme and T3-style model picker for Hermes Desktop.
+version: 0.5.0
+description: Unofficial T3 Code dark theme for Hermes Desktop.
 manifest_version: 1
 kind: standalone
 author: mariomondev

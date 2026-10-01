@@ -1,6 +1,11 @@
 import { CHAT_EMPTY_AREA, THEMES_AREA, requestTheme } from '@hermes/plugin-sdk'
+import { useEffect } from 'react'
 import { jsx } from 'react/jsx-runtime'
 import * as sdk from '@hermes/plugin-sdk'
+
+// This plugin extends Hermes Desktop only through the plugin SDK: a theme with
+// its stylesheet, a model pill label, session row decorations and the empty
+// chat headline. It never queries, observes or changes the app's document.
 
 // Unofficial port of T3 Code's standard dark theme (not its optional "T3 Chat" theme).
 // pingdotgg/t3code@da6a85b1365993d0ff2a79698cd82498de247d8a
@@ -25,7 +30,14 @@ const typography = {
   fontMono: 'ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", emoji'
 }
 
-// Scope all layout changes to this theme; picking another restores Hermes.
+// Lucide icons (ISC), as masks so they stay on currentColor.
+const lucide = inner => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`)}")`
+const paperclipIcon = lucide('<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>')
+const serverIcon = lucide('<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>')
+const homeIcon = lucide('<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>')
+
+// The theme's stylesheet, handed to Hermes as the theme's customCSS: Hermes adds
+// it while this theme is painted and removes it with any other theme.
 // Keep the native viewport/scroll/sticky positioning and floating composer.
 const css = `
 /* Explicit tokens: Hermes synthesizes colors from seeds.
@@ -151,7 +163,10 @@ const css = `
 :root[data-hermes-theme="t3-code-theme"] [data-slot="composer-fade"] [class*="grid-area:controls"] > div:last-child > * {
   order: 4;
 }
-:root[data-hermes-theme="t3-code-theme"] [data-slot="composer-fade"] :is([data-tour="model-pill"], [data-t3-model-pill]) {
+/* Hermes tags only the primary chat's model pill (data-tour). In a tile the
+   pill is the button right before the reasoning pill, or the first menu button
+   of the controls when the model has no reasoning levels. */
+:root[data-hermes-theme="t3-code-theme"] [data-slot="composer-fade"] :is([data-tour="model-pill"], button:has(+ [data-testid="reasoning-pill"]), [class*="grid-area:controls"] > div > button[aria-haspopup="menu"]:first-child:not([data-testid="reasoning-pill"])) {
   order: 1 !important; max-width: min(260px, 50%); min-width: 0;
 }
 :root[data-hermes-theme="t3-code-theme"] [data-slot="composer-fade"] [data-testid="reasoning-pill"] {
@@ -239,21 +254,19 @@ const css = `
 }
 /* Attachment chips carry their own px-1. */
 :root[data-hermes-theme="t3-code-theme"] [data-slot="composer-attachments"] { padding-inline: 0; }
-:root[data-hermes-theme="t3-code-theme"] [data-slot="composer-fade"] :is([data-tour="model-pill"], [data-t3-model-pill]) { margin-inline-start: -8px; }
+:root[data-hermes-theme="t3-code-theme"] [data-slot="composer-fade"] :is([data-tour="model-pill"], button:has(+ [data-testid="reasoning-pill"]), [class*="grid-area:controls"] > div > button[aria-haspopup="menu"]:first-child:not([data-testid="reasoning-pill"])) { margin-inline-start: -8px; }
 /* Empty session (tiles, and any stored session with no messages yet): Hermes
-   shows no intro there, so the "chat.empty" contribution supplies the headline.
-   It stands down when another plugin (e.g. a bot) owns that empty state. */
-:root:not([data-hermes-theme="t3-code-theme"]) [data-t3-empty-hero],
+   shows no intro there, so the "chat.empty" contribution supplies the headline,
+   with the composer in the middle of the pane as in T3's new thread. It stands
+   down when another plugin (e.g. a bot) owns that empty state. */
 :root[data-hermes-theme="t3-code-theme"] [data-t3-empty-hero]:not(:only-child) { display: none; }
-/* Opening a chat from the sidebar empties the primary transcript for a frame
-   or two before its rows land, and Hermes mounts "chat.empty" in that gap.
-   While installSwitchFade marks the switch, the primary pane is hydrating, not
-   empty: no headline, and the composer stays at the bottom. */
-:root[data-hermes-theme="t3-code-theme"][data-t3-switching] [data-chat-surface][data-composer-target="main"] [data-t3-empty-hero] { display: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-empty-hero] { padding-bottom: calc(var(--composer-measured-height) + 132px); }
+:root[data-hermes-theme="t3-code-theme"] [data-t3-empty-hero] {
+  margin: 0 auto; max-width: 64rem; padding-bottom: calc(var(--composer-measured-height) + 132px);
+  font-size: 30px; line-height: 36px; font-weight: 400; letter-spacing: -0.025em; color: var(--t3-fg); text-wrap: balance;
+}
 :root[data-hermes-theme="t3-code-theme"] [data-chat-surface]:not([data-hud-shell] *) div:has(> [data-t3-empty-hero]:only-child) { padding-top: 0; }
 :root[data-hermes-theme="t3-code-theme"] [data-chat-surface]:not([data-composer-target="main"]):has([data-t3-empty-hero]:only-child):not([data-hud-shell] *) [data-slot="composer-dock"]:not([data-popped-out]),
-:root[data-hermes-theme="t3-code-theme"]:not([data-t3-switching]) [data-chat-surface][data-composer-target="main"]:has([data-t3-empty-hero]:only-child):not([data-hud-shell] *) [data-slot="composer-dock"]:not([data-popped-out]) {
+:root[data-hermes-theme="t3-code-theme"] [data-chat-surface][data-composer-target="main"]:has([data-t3-empty-hero]:only-child):not([data-hud-shell] *) [data-slot="composer-dock"]:not([data-popped-out]) {
   top: 50%; bottom: auto; --tw-translate-y: -50%;
 }
 /* Sidebar chat rows, T3's thread list: the title leads (13px medium, dim
@@ -268,8 +281,8 @@ const css = `
 }
 :root[data-hermes-theme="t3-code-theme"] [data-tour="sessions-sidebar"] .row-hover .session-row-tail { font-size: 11px; color: rgb(129 129 129 / 85%); }
 /* Card rows (Hermes' card style, row-button is flex-col), T3's thread card:
-   badge + project + age, title, then the footer installRowCard draws over the
-   space the hidden native footer leaves. No running arc, no idle dot. */
+   badge + project + age, title, then this plugin's footer over the space the
+   hidden native footer leaves. No running arc, no idle dot. */
 :root[data-hermes-theme="t3-code-theme"] [data-tour="sessions-sidebar"] .row-hover > .arc-row { display: none; }
 /* Hermes' min-h replaces min-height: auto, so in an overflowing list the flex
    column shrinks each card below its content and clips it. */
@@ -288,10 +301,6 @@ const css = `
 }
 :root[data-hermes-theme="t3-code-theme"] [data-tour="sessions-sidebar"] .row-hover:is(:hover, :focus-within, [class~="bg-(--ui-row-active-background)"], [data-working="true"]) [data-slot="row-button"][class~="flex-col"] .hover-marquee { color: #f5f5f5; }
 :root[data-hermes-theme="t3-code-theme"] [data-tour="sessions-sidebar"] .row-hover [data-slot="row-button"][class~="flex-col"] .session-row-tail { font-size: 12px; color: var(--t3-sidebar-muted-fg); }
-/* Chat switch (installSwitchFade): the primary transcript stays hidden until
-   the opened chat is on screen and pinned to the bottom, then fades in. */
-:root[data-hermes-theme="t3-code-theme"] [data-chat-surface][data-composer-target="main"] [data-slot="aui_thread-viewport"] { transition: opacity .12s ease-out; }
-:root[data-hermes-theme="t3-code-theme"][data-t3-switching] [data-chat-surface][data-composer-target="main"] [data-slot="aui_thread-viewport"] { opacity: 0; transition: none; }
 /* Confirm dialogs (a body with header + footer): T3's AlertDialog. dialog-glass popup
    with a 2xl radius, 24px header, 20px title, and the footer as a muted bar with
    an outline Cancel and a primary Confirm. Other dialogs keep Hermes' layout. */
@@ -340,122 +349,18 @@ const css = `
 }
 `
 
-// Exact identifiers, never display names or delimiter-concatenated keys.
-function favoriteKey(provider, model) { return JSON.stringify([provider, model]) }
-
-// The SDK exports the catalog renderer, but NOT the composer's session-bound
-// controller. Extend the native menu rather than reimplementing model.switch,
-// guard dialogs, preset application, cache invalidation or optimistic rollback.
-// Only the primary marker has documented, provable surface ownership. Tiles
-// keep their native picker until the SDK exposes the same owner/controller.
-// "surface" is the data-composer-target of the chat that owns the open pill:
-// "main" for the primary chat, "tile:<storedId>" for a tile. A tile is only
-// served while it holds focus, because focusedSessionId/Owner then describe it.
-function resolveCatalog(host, client, surface = 'main') {
-  const state = host?.state
-  if (!state?.focusedSessionOwner || !client?.getQueryCache) return null
-  const session = state.focusedSessionId.get()
-  if (surface === 'main') {
-    if (state.activeSessionId.get() !== session) return null
-  } else {
-    const stored = state.focusedStoredSessionId?.get?.()
-    if (!stored || surface !== 'tile:' + stored) return null
-  }
-  const owner = state.focusedSessionOwner.get()
-  if (!owner?.connectionId || !owner.profile) return null
-  const key = ['model-options', owner.profile, session || 'global', 'owner', owner.connectionId]
-  const matches = client.getQueryCache().findAll({ queryKey: key, exact: true })
-    .filter(q => JSON.stringify(q.queryKey) === JSON.stringify(key) && q.getObserversCount() > 0)
-  if (matches.length !== 1 || !Array.isArray(matches[0].state.data?.providers)) return null
-  return { key, data: matches[0].state.data }
-}
-
-// Display adapter from Hermes model-status-label.ts (MIT, Nous Research).
-// Matching is deliberately collision-intolerant: no row is guessed from its
-// position, a fuzzy name, React internals, or a model from another provider.
-function nativeModelParts(model) {
-  let base = model.trim().split('/').pop(), variant = '', quant = ''
-  // Variant and GGUF quant suffixes can come in either order.
-  for (let progress = true; progress;) {
-    progress = false
-    if (!variant) {
-      for (const [suffix, label] of [['fast','Fast'],['flash','Flash'],['thinking','Thinking'],['preview','Preview'],['latest','Latest']]) {
-        if (base.toLowerCase().endsWith('-' + suffix)) { base = base.slice(0, -suffix.length - 1); variant = label; progress = true; break }
-      }
-    }
-    const q = !quant && base.match(/-(?:UD-)?(Q\d(?:_[A-Z0-9]+)*|IQ\d(?:_[A-Z0-9]+)*|F16|BF16)$/i)
-    if (q) {
-      quant = q[1].split('_')[0].toUpperCase()
-      base = base.slice(0, -q[0].length).replace(/-(?:Instruct|Chat)(?:-\d{4})?$/i, '')
-      progress = true
-    }
-  }
-  const tags = [variant, quant].filter(Boolean)
-  const context = base.match(/\[(\d+[mk])\]$/i)
-  if (context) { tags.push(context[1].toUpperCase()); base = base.slice(0, -context[0].length) }
-  base = base.replace(/-\d{8}$/, '')
-  const title = s => s.replace(/\b\w/g, c => c.toUpperCase()).trim()
-  const vendor = s => VENDOR_CASING.reduce((text, [pattern, cased]) => text.replace(pattern, cased),
-    s.replace(/\b(a?)(\d+(?:\.\d+)?)b\b/gi, (m, prefix, size) => `${prefix.toUpperCase()}${size}B`))
-  const name = /^claude-/i.test(base) ? vendor(title(base.replace(/^claude-/i,'').replace(/(\d)-(?=\d)/g,'$1.').replace(/-/g,' ')))
-    : /^gpt-/i.test(base) ? base.replace(/^gpt-/i,'GPT-')
-    : /^gemini-/i.test(base) ? vendor(title(base.replace(/^gemini-/i,'Gemini ').replace(/-/g,' ')))
-    : vendor(title(base.replace(/-/g,' ')))
-  return { name: name || model.trim() || 'No model', tag: tags.join(' ') }
-}
-const VENDOR_CASING = [['Deepseek','DeepSeek'],['Glm','GLM'],['Minimax','MiniMax'],['Openai','OpenAI'],['Ernie','ERNIE'],['Mimo','MiMo'],['Bge','BGE'],['Vl','VL'],['It','IT'],['Fp8','FP8'],['Ai','AI']]
-  .map(([word, cased]) => [new RegExp(`\\b${word}\\b`, 'g'), cased])
-// Native row: a name span, then one chip per tag, fast mode and effort (in that order).
-function identifyNativeRow(row, provider) {
-  const label = row.querySelector(':scope > span')
-  const nameNode = label?.querySelector(':scope > span')
-  if (!nameNode || !Array.isArray(provider.models)) return null
-  // HighlightMatches splits the name into spans while searching; textContent joins them.
-  const name = nameNode.textContent
-  const firstChip = nameNode.nextElementSibling?.textContent.trim() || ''
-  const matches = provider.models.filter(id => {
-    // Native family collapsing: a -fast sibling is not a separate row.
-    if (/-fast$/i.test(id) && provider.models.includes(id.replace(/-fast$/i,''))) return false
-    const parts = nativeModelParts(id)
-    return parts.name === name && (!parts.tag || firstChip === parts.tag)
-  })
-  const tagged = matches.filter(id => nativeModelParts(id).tag)
-  const exact = tagged.length ? tagged : matches
-  return exact.length === 1 ? exact[0] : null
-}
-function readFavorites(storage) {
-  const saved = storage.get('modelFavorites.v1', [])
-  return new Set((Array.isArray(saved) ? saved : []).filter(key => {
-    try { const pair = JSON.parse(key); return Array.isArray(pair) && pair.length === 2 && pair.every(s => typeof s === 'string' && s.length > 0) }
-    catch { return false }
-  }))
-}
-
-// Lucide icons (ISC): paperclip, search, star. Masks keep them on currentColor.
-const lucide = inner => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`)}")`
-const starPath = '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>'
-const starSvg = `<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${starPath}</svg>`
-const paperclipIcon = lucide('<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>')
-const laptopIcon = lucide('<path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z"/><path d="M20.054 15.987H3.946"/>')
-const serverIcon = lucide('<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>')
-const searchIcon = lucide('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>')
-
-const pickerCss = `
+const composerCss = `
 /* Composer controls: T3 ComposerControl "sm" (h-7, px-2.5, gap-1.5, text-sm
    font-medium, secondary label color measured in the T3 app). */
-:root[data-hermes-theme="t3-code-theme"] :is(:is([data-tour="model-pill"], [data-t3-model-pill]), [data-testid="reasoning-pill"]) {
+:root[data-hermes-theme="t3-code-theme"] :is([data-tour="model-pill"], button:has(+ [data-testid="reasoning-pill"]), [class*="grid-area:controls"] > div > button[aria-haspopup="menu"]:first-child:not([data-testid="reasoning-pill"]), [data-testid="reasoning-pill"]) {
   height: 28px; padding-inline: 10px; gap: 6px; border-radius: 8px;
   font-size: 14px; font-weight: 500; color: #767676;
 }
-:root[data-hermes-theme="t3-code-theme"] :is(:is([data-tour="model-pill"], [data-t3-model-pill]), [data-testid="reasoning-pill"]):is(:hover, [data-state="open"]) {
+:root[data-hermes-theme="t3-code-theme"] :is([data-tour="model-pill"], button:has(+ [data-testid="reasoning-pill"]), [class*="grid-area:controls"] > div > button[aria-haspopup="menu"]:first-child:not([data-testid="reasoning-pill"]), [data-testid="reasoning-pill"]):is(:hover, [data-state="open"]) {
   color: var(--t3-fg); background: rgb(255 255 255 / 6%);
 }
-:root[data-hermes-theme="t3-code-theme"] :is(:is([data-tour="model-pill"], [data-t3-model-pill]), [data-testid="reasoning-pill"]) > svg {
+:root[data-hermes-theme="t3-code-theme"] :is([data-tour="model-pill"], button:has(+ [data-testid="reasoning-pill"]), [class*="grid-area:controls"] > div > button[aria-haspopup="menu"]:first-child:not([data-testid="reasoning-pill"]), [data-testid="reasoning-pill"]) > svg {
   width: 14px; height: 14px; opacity: .6;
-}
-:root[data-hermes-theme="t3-code-theme"] :is([data-tour="model-pill"], [data-t3-model-pill])[data-t3-provider]::before {
-  content: ''; flex: 0 0 16px; width: 16px; height: 16px;
-  background: var(--t3-icon-color, currentColor); mask: var(--t3-provider-icon) center / contain no-repeat;
 }
 :root[data-hermes-theme="t3-code-theme"] [data-testid="reasoning-pill"] { position: relative; margin-inline-start: var(--t3-separator-space, 9px); }
 /* The separator sits in the middle of the row gap plus that margin, so the
@@ -465,15 +370,11 @@ const pickerCss = `
   inset-inline-start: calc((var(--t3-control-gap, 6px) + var(--t3-separator-space, 9px) + 1px) / -2);
   background: rgb(255 255 255 / 8%);
 }
-:root[data-hermes-theme="t3-code-theme"] [data-testid="reasoning-pill"] > span[data-t3-label] { font-size: 0; }
-:root[data-hermes-theme="t3-code-theme"] [data-tour="model-pill"][data-t3-pending-label] > span.truncate { font-size: 0; }
-:root[data-hermes-theme="t3-code-theme"] [data-tour="model-pill"][data-t3-pending-label] > span.truncate::before { content: var(--t3-pending-label); font-size: 14px; }
-:root[data-hermes-theme="t3-code-theme"] [data-testid="reasoning-pill"] > span[data-t3-label]::before { content: attr(data-t3-label); font-size: 14px; }
-:root[data-hermes-theme="t3-code-theme"] :is(:is([data-tour="model-pill"], [data-t3-model-pill]), [data-testid="reasoning-pill"]) > span:has(.glyph-spinner) {
+:root[data-hermes-theme="t3-code-theme"] :is([data-tour="model-pill"], button:has(+ [data-testid="reasoning-pill"]), [class*="grid-area:controls"] > div > button[aria-haspopup="menu"]:first-child:not([data-testid="reasoning-pill"]), [data-testid="reasoning-pill"]) > span:has(.glyph-spinner) {
   width: 56px; height: 10px; border-radius: 9999px; background: rgb(255 255 255 / 8%);
   animation: t3-skeleton 1.2s ease-in-out infinite;
 }
-:root[data-hermes-theme="t3-code-theme"] :is(:is([data-tour="model-pill"], [data-t3-model-pill]), [data-testid="reasoning-pill"]) > span:has(.glyph-spinner) > * { visibility: hidden; }
+:root[data-hermes-theme="t3-code-theme"] :is([data-tour="model-pill"], button:has(+ [data-testid="reasoning-pill"]), [class*="grid-area:controls"] > div > button[aria-haspopup="menu"]:first-child:not([data-testid="reasoning-pill"]), [data-testid="reasoning-pill"]) > span:has(.glyph-spinner) > * { visibility: hidden; }
 @keyframes t3-skeleton { 50% { opacity: .45; } }
 /* The native "+" context menu reads as T3's paperclip on the right. */
 :root[data-hermes-theme="t3-code-theme"] [data-slot="composer-fade"] [class*="grid-area:menu"] button { color: rgb(245 245 245 / 60%); width: 32px; height: 32px; border-radius: 8px; }
@@ -523,195 +424,75 @@ const pickerCss = `
   min-height: 28px; padding: 4px 12px; border: 0; border-radius: 0 0 14px 14px;
 }
 :root[data-hermes-theme="t3-code-theme"] [data-slot="composer-surface"] > .status-drawer .coding-status-bar :is(span, .codicon) { font-size: 12px; }
-:root[data-hermes-theme="t3-code-theme"] [data-slot="composer-surface"] > .status-drawer .coding-status-bar :is(span, .codicon):not([data-t3-connection]) { color: #767676; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-connection] {
-  display: inline-flex; align-items: center; gap: 6px; margin-inline-end: 4px; flex: none;
-  font-size: 12px; line-height: 16px; color: #767676;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-connection]::before {
-  content: ''; width: 14px; height: 14px; background: currentColor; mask: ${laptopIcon} center / contain no-repeat;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-connection][data-t3-connection-kind="remote"] { color: #7ea6ff; }
-:root[data-hermes-theme="t3-code-theme"] .coding-status-bar > [data-t3-connection]::after {
-  content: ''; width: 1px; height: 12px; margin-inline-start: 6px; background: rgb(255 255 255 / 10%);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-connection][data-t3-connection-kind="remote"]::before { mask-image: ${serverIcon}; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-connection][data-t3-standalone] { display: flex; min-height: 28px; padding: 4px 12px; }
-/* Fresh draft: composer and headline share the middle of the pane, as in
-   T3's new thread. The headline sits 36px above the composer (the intro's
-   24px top padding + 36px line box, hence + 132px). */
-:root[data-hermes-theme="t3-code-theme"][data-t3-draft] [data-chat-surface][data-composer-target="main"]:has([data-slot="aui_intro"]):not([data-hud-shell] *) [data-slot="composer-dock"]:not([data-popped-out]) {
-  top: 50%; bottom: auto; --tw-translate-y: -50%;
-}
-:root[data-hermes-theme="t3-code-theme"][data-t3-draft] [data-chat-surface][data-composer-target="main"]:not([data-hud-shell] *) div:has(> [data-slot="aui_intro"]) { padding-top: 0; }
-:root[data-hermes-theme="t3-code-theme"][data-t3-draft] [data-chat-surface][data-composer-target="main"]:not([data-hud-shell] *) [data-slot="aui_intro"] { padding-bottom: calc(var(--composer-measured-height) + 132px); }
-/* Chat header crumb (T3 "VT vtt / New thread") and no bottom status bar. */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-crumb] {
-  position: absolute; top: 8px; bottom: 0; left: calc(var(--panel-titlebar-left, 0px) + 16px); max-width: 50%;
-  display: flex; align-items: center; gap: 8px; pointer-events: none; font-size: 14px; line-height: 20px; white-space: nowrap;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-crumb-badge] {
-  display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; flex: none;
-  font-size: 9px; font-weight: 700; letter-spacing: .02em; color: #fb923c; background: rgb(234 88 12 / 22%);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-crumb-project] { margin-inline-start: -2px; color: var(--t3-sidebar-muted-fg); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-crumb-sep] { color: rgb(129 129 129 / 60%); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-crumb-title] { overflow: hidden; text-overflow: ellipsis; color: var(--t3-fg); font-weight: 500; }
-/* Tab layout: the crumb is a bar across the top of the chat pane, and the
-   transcript starts below it. */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-tab-crumb] {
-  top: 0; bottom: auto; left: 0; right: 0; max-width: none; height: 40px; padding: 0 16px; z-index: 2;
-  background: var(--ui-chat-surface-background); border-bottom: 1px solid rgb(255 255 255 / 6%);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-slot="composer-bounds"]:has(> [data-t3-tab-crumb]) [data-slot="aui_thread-viewport"] { padding-top: 40px; }
-/* Chat tab strips: Codex-style rounded tabs instead of uppercase labels on an
-   underline. Active tab lighter with a hairline border, the provider icon
-   first, the status dot only while it says something, and a reserved slot for
-   the close button (always shown on the active tab). Other strips stay native.
-   Tabs are matched by the plugin's own mark: a session tab's context-menu
-   wrapper replaces its data-slot="pane-tab". */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [role="tablist"] { align-items: center; gap: 4px; padding-inline: 4px; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab]:not([data-vertical]) {
-  --tab-bg: #111111; height: 26px; min-width: 96px; max-width: 200px; align-self: center; padding-left: 6px;
-  border: 1px solid transparent; border-radius: 8px; box-shadow: none; overflow: hidden; color: var(--t3-sidebar-muted-fg);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab]:not([data-vertical]):hover { --tab-bg: #171717; box-shadow: none; color: var(--t3-fg); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-active="true"]:not([data-vertical]) {
-  --tab-bg: #1c1c1c; border-color: rgb(255 255 255 / 8%); color: var(--t3-fg);
-}
-/* The icon slot is always reserved: a skeleton square (the pills' loading
-   look) until the provider is known, then the icon fades in. No layout shift. */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab]::before {
-  content: ''; flex: 0 0 14px; height: 14px; border-radius: 4px; background: rgb(255 255 255 / 8%);
-  animation: t3-skeleton 1.2s ease-in-out infinite;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-t3-tab-icon]::before {
-  border-radius: 0; background: var(--t3-tab-icon-fill, currentColor); mask: var(--t3-tab-icon) center / contain no-repeat;
-  animation: t3-icon-in .15s ease-out;
-}
-@keyframes t3-icon-in { from { opacity: 0; } }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-t3-tab-icon-color]::before { background: var(--t3-tab-icon) center / contain no-repeat; mask: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab] .pane-tab-content > span:has(.tab-key-hint-icon):not(:has([role="status"], [data-tab-key-hint])) { display: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab] .pane-tab-content .uppercase {
-  font-size: 13px; line-height: 18px; font-weight: 400; letter-spacing: normal; text-transform: none;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-active="true"] .pane-tab-content .uppercase { font-weight: 500; }
-/* Hermes sets --pane-tab-close-width only on [data-slot='pane-tab'], which a session tab loses to its context-menu wrapper. */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-closeable] { --pane-tab-close-width: 24px; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-closeable]:not([data-vertical]) > .pane-tab-content { padding-right: var(--pane-tab-close-width); mask-image: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-closeable][data-active="true"]:not([data-vertical]) > span:last-child { opacity: 1; pointer-events: auto; }
-/* Hermes' tertiary 11px close glyph disappears on the dark tab: brighter, 12px, with a hover chip. */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-closeable] > span:last-child { align-items: center; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-closeable] > span:last-child > button {
-  width: 18px; height: 18px; margin-right: 4px; border-radius: 5px; color: var(--t3-sidebar-muted-fg);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-closeable] > span:last-child > button:hover { color: var(--t3-fg); background: rgb(255 255 255 / 10%); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [data-t3-chat-tab][data-closeable] > span:last-child .codicon { font-size: 12px !important; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-chat-strip] [role="tablist"] > span:last-child:not([data-slot]) button { width: 26px; height: 26px; border-radius: 8px; }
-:root[data-hermes-theme="t3-code-theme"] [data-slot="statusbar"] { display: none; }
-/* Draft hero: T3's DraftHeroHeadline replaces the wordmark splash. */
-:root[data-hermes-theme="t3-code-theme"] [data-slot="aui_intro"]:has([data-t3-hero]) > div > p { display: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-hero] {
-  margin: 0 auto; max-width: 64rem; font-size: 30px; line-height: 36px; font-weight: 400;
-  letter-spacing: -0.025em; color: var(--t3-fg); text-wrap: balance;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-hero] > span { border-bottom: 1px dotted rgb(245 245 245 / 60%); }
-
-/* Model picker: T3 ModelPickerContent (360px, 44px rail, two-line rows). */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] {
-  position: relative; width: min(360px, calc(100vw - 24px)); padding: 0 0 4px 44px; overflow: hidden; border-radius: 12px;
-  max-height: min(420px, var(--radix-dropdown-menu-content-available-height, 70vh));
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-sidebar] {
-  position: absolute; inset: 0 auto 0 0; width: 44px; overflow-y: auto; scrollbar-width: none; padding: 4px;
-  display: flex; flex-direction: column; gap: 4px;
-  background: rgb(17 17 17 / 30%); border-inline-end: 1px solid rgb(255 255 255 / 6%);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-sidebar] button {
-  position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-  padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--t3-fg);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-sidebar] button > span:last-child { display: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-sidebar] button:is(:hover, :focus-visible) { background: color-mix(in srgb, var(--t3-surface) 90%, var(--t3-fg)); outline: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-provider-icon] { display: inline-block; width: 16px; height: 16px; flex: 0 0 16px; background: var(--t3-icon-color, currentColor); mask: var(--t3-provider-icon) center / contain no-repeat; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-color-icon],
-:root[data-hermes-theme="t3-code-theme"] :is([data-tour="model-pill"], [data-t3-model-pill])[data-t3-color-icon]::before { background: var(--t3-provider-image) center / contain no-repeat; mask: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-sidebar] [data-t3-provider-icon] { width: 20px; height: 20px; flex-basis: 20px; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-sidebar] [data-t3-star-icon] svg { display: block; width: 20px; height: 20px; fill: currentColor; stroke: currentColor; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-rail-sep] { flex: 0 0 auto; border-bottom: 1px solid rgb(255 255 255 / 6%); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-rail-indicator] {
-  position: absolute; right: 0; width: 3px; height: 20px; border-radius: 9999px 0 0 9999px;
-  background: var(--t3-primary); pointer-events: none; transition: top .2s ease-out;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] [data-slot="dropdown-menu-search"] {
-  position: relative; margin: 8px 8px 0; padding: 0 0 10px 22px; border-bottom: 1px solid rgb(255 255 255 / 6%); transition: border-color .15s;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] [data-slot="dropdown-menu-search"]:focus-within { border-bottom-color: var(--t3-primary); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] [data-slot="dropdown-menu-search"]::before {
-  content: ''; position: absolute; left: -2px; top: 5px; width: 16px; height: 16px; opacity: .7;
-  background: var(--t3-muted-fg); mask: ${searchIcon} center / contain no-repeat;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] [data-slot="dropdown-menu-search"] input { height: 26px; font-size: 14px; line-height: 26px; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] [data-slot="dropdown-menu-search"] + [data-slot="dropdown-menu-separator"] { display: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] > div:has(> [data-t3-group]) {
-  height: 260px; max-height: calc(var(--radix-dropdown-menu-content-available-height, 70vh) - 96px);
-  overflow-y: auto; padding: 4px 8px;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-group] { padding: 0; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-header]:not([data-t3-collapsed]) { display: none !important; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model]:not([data-t3-model=""]) {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "name kbd star" "sub kbd star";
-  gap: 0 6px; align-items: center; align-content: center; padding: 8px; border-radius: 6px; min-height: 52px;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model]:not([data-t3-model=""]) > span:first-child {
-  grid-area: name; font-size: 12px; font-weight: 500; line-height: 16.5px; color: var(--t3-fg);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker]:not([data-t3-searching]) [data-t3-model] > span[data-t3-label] { font-size: 0; line-height: 0; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker]:not([data-t3-searching]) [data-t3-model] > span[data-t3-label]::before {
-  content: attr(data-t3-label); display: block; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 16.5px;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model][data-t3-sub]::before {
-  content: attr(data-t3-sub); grid-area: sub; margin-top: 4px; padding-left: 18px; min-width: 0;
-  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  font-size: 12px; font-weight: 400; line-height: 16.5px; color: rgb(129 129 129 / 70%);
-  background: var(--t3-row-icon) left center / 12px 12px no-repeat;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model][data-t3-kbd]:not([data-t3-kbd=""])::after {
-  content: attr(data-t3-kbd); grid-area: kbd; height: 16px; padding: 0 6px; border-radius: 4px;
-  font-size: 10px; font-weight: 500; line-height: 16px; color: var(--t3-sidebar-muted-fg); background: rgb(255 255 255 / 6%);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model] > .codicon-check { display: none; }
-/* T3 rows carry no effort/tag chips and no submenu caret; effort lives on the composer control. */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model]:not([data-t3-model=""]) > span:first-child > span ~ span,
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model]:not([data-t3-model=""]) > .codicon-chevron-right { display: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model]:is(:hover, [data-highlighted], [data-t3-kb-active]) { background: color-mix(in srgb, var(--t3-surface) 90%, var(--t3-fg)); color: var(--t3-fg); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model][data-t3-current] { background: rgb(245 245 245 / 8%); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-favorite] {
-  grid-area: star; width: 24px; height: 24px; margin-right: -4px; padding: 0; display: flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 6px; background: transparent; color: rgb(129 129 129 / 70%); opacity: .64; transition: color .15s, opacity .15s;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-favorite] svg { width: 12px; height: 12px; fill: none; stroke: currentColor; color: inherit; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-model]:hover [data-t3-favorite],
-:root[data-hermes-theme="t3-code-theme"] [data-t3-favorite]:focus-visible { opacity: 1; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-favorite]:hover { color: var(--t3-fg); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-favorite][aria-pressed="true"] { opacity: 1; color: #eab308; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-favorite][aria-pressed="true"] svg { fill: currentColor; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] [data-t3-filtered] { display: none !important; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] :is(button, [data-t3-model]):focus-visible { outline: 2px solid var(--t3-primary); outline-offset: -2px; }
-/* The search field shows focus through its blue underline, like T3. */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] [data-slot="dropdown-menu-search"] input:focus { outline: none; box-shadow: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-empty] {
-  position: absolute; left: 44px; right: 0; top: 50%; text-align: center; pointer-events: none;
-  font-size: 12px; line-height: 16.5px; color: var(--t3-muted-fg);
-}
-/* Refresh / custom / edit stay reachable as one quiet footer line. */
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] > [data-slot="dropdown-menu-separator"] { margin: 0 8px 4px; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] > [data-slot="dropdown-menu-item"] {
-  display: inline-flex; width: auto; gap: 4px; margin-inline-start: 4px; padding: 4px 6px;
-  font-size: 11px; font-weight: 400; color: var(--t3-muted-fg);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-picker] > [data-slot="dropdown-menu-item"] > .codicon { display: none; }
+:root[data-hermes-theme="t3-code-theme"] [data-slot="composer-surface"] > .status-drawer .coding-status-bar :is(span, .codicon) { color: #767676; }
 `
+
+const rowCardCss = `
+/* Sidebar row contributions (the "sessionRow" areas): project badge and footer. */
+:root[data-hermes-theme="t3-code-theme"] [data-slot="row-button"]:not([class~="flex-col"]) [data-t3-row-badge] { display: none; }
+:root[data-hermes-theme="t3-code-theme"] [data-t3-row-badge] {
+  display: grid; place-items: center; flex: none; width: 16px; height: 16px; border-radius: 4px;
+  font-size: 8px; font-weight: 700; line-height: 1; letter-spacing: .02em; color: #fb923c; background: rgb(234 88 12 / 22%);
+}
+:root[data-hermes-theme="t3-code-theme"] [data-t3-row-badge="home"] { background: rgb(129 129 129 / 18%); }
+:root[data-hermes-theme="t3-code-theme"] [data-t3-row-badge="home"]::before {
+  content: ""; width: 10px; height: 10px; background: var(--t3-sidebar-muted-fg); mask: ${homeIcon} center / contain no-repeat;
+}
+:root[data-hermes-theme="t3-code-theme"] [data-t3-row-foot] { display: flex; flex: none; align-items: center; gap: 4px; pointer-events: none; }
+:root[data-hermes-theme="t3-code-theme"] [data-slot="row-button"]:not([class~="flex-col"]) [data-t3-row-foot] > :not([data-t3-row-machine]) { display: none; }
+:root[data-hermes-theme="t3-code-theme"] .row-hover:has(> [data-slot="row-button"][class~="flex-col"]) [data-t3-row-foot] {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; height: 16px;
+}
+:root[data-hermes-theme="t3-code-theme"] [data-t3-row-branch] {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; line-height: 16px; color: rgb(129 129 129 / 60%);
+}
+:root[data-hermes-theme="t3-code-theme"] .row-hover:has(> [data-slot="row-button"][class~="flex-col"]) [data-t3-row-branch]:empty { visibility: hidden; }
+:root[data-hermes-theme="t3-code-theme"] [data-t3-row-machine] {
+  flex: none; width: 12px; height: 12px;
+  background: rgb(163 163 163 / 70%); mask: ${serverIcon} center / contain no-repeat;
+}
+:root[data-hermes-theme="t3-code-theme"] .row-hover:has(> [data-slot="row-button"][class~="flex-col"]) [data-t3-row-machine] { width: 14px; height: 14px; }
+:root[data-hermes-theme="t3-code-theme"] [data-t3-row-provider] {
+  flex: none; width: 14px; height: 14px; opacity: .6; background: center / contain no-repeat;
+}
+`
+
+// Display adapter from Hermes model-status-label.ts (MIT, Nous Research).
+// Matching is deliberately collision-intolerant: no row is guessed from its
+// position, a fuzzy name, React internals, or a model from another provider.
+function nativeModelParts(model) {
+  let base = model.trim().split('/').pop(), variant = '', quant = ''
+  // Variant and GGUF quant suffixes can come in either order.
+  for (let progress = true; progress;) {
+    progress = false
+    if (!variant) {
+      for (const [suffix, label] of [['fast','Fast'],['flash','Flash'],['thinking','Thinking'],['preview','Preview'],['latest','Latest']]) {
+        if (base.toLowerCase().endsWith('-' + suffix)) { base = base.slice(0, -suffix.length - 1); variant = label; progress = true; break }
+      }
+    }
+    const q = !quant && base.match(/-(?:UD-)?(Q\d(?:_[A-Z0-9]+)*|IQ\d(?:_[A-Z0-9]+)*|F16|BF16)$/i)
+    if (q) {
+      quant = q[1].split('_')[0].toUpperCase()
+      base = base.slice(0, -q[0].length).replace(/-(?:Instruct|Chat)(?:-\d{4})?$/i, '')
+      progress = true
+    }
+  }
+  const tags = [variant, quant].filter(Boolean)
+  const context = base.match(/\[(\d+[mk])\]$/i)
+  if (context) { tags.push(context[1].toUpperCase()); base = base.slice(0, -context[0].length) }
+  base = base.replace(/-\d{8}$/, '')
+  const title = s => s.replace(/\b\w/g, c => c.toUpperCase()).trim()
+  const vendor = s => VENDOR_CASING.reduce((text, [pattern, cased]) => text.replace(pattern, cased),
+    s.replace(/\b(a?)(\d+(?:\.\d+)?)b\b/gi, (m, prefix, size) => `${prefix.toUpperCase()}${size}B`))
+  const name = /^claude-/i.test(base) ? vendor(title(base.replace(/^claude-/i,'').replace(/(\d)-(?=\d)/g,'$1.').replace(/-/g,' ')))
+    : /^gpt-/i.test(base) ? base.replace(/^gpt-/i,'GPT-')
+    : /^gemini-/i.test(base) ? vendor(title(base.replace(/^gemini-/i,'Gemini ').replace(/-/g,' ')))
+    : vendor(title(base.replace(/-/g,' ')))
+  return { name: name || model.trim() || 'No model', tag: tags.join(' ') }
+}
+const VENDOR_CASING = [['Deepseek','DeepSeek'],['Glm','GLM'],['Minimax','MiniMax'],['Openai','OpenAI'],['Ernie','ERNIE'],['Mimo','MiMo'],['Bge','BGE'],['Vl','VL'],['It','IT'],['Fp8','FP8'],['Ai','AI']]
+  .map(([word, cased]) => [new RegExp(`\\b${word}\\b`, 'g'), cased])
 
 // These neutral monograms are original fallback icons, not vendor logos.
 // The OpenAI/Claude SVG paths below are attributed separately in README.
@@ -770,29 +551,12 @@ function providerSvg(slug, fill = 'black') {
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="${fill}" stroke-width="1.5"/><text x="12" y="17" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="${fill}">${safeLetter}</text></svg>`, colored: false }
 }
 const svgUrl = svg => `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
-function paintProviderIcon(element, slug) {
-  const { svg, colored } = providerSvg(slug)
-  if (colored) {
-    element.style.setProperty('--t3-provider-image', svgUrl(svg))
-    element.dataset.t3ColorIcon = ''
-    return
-  }
-  element.style.setProperty('--t3-provider-icon', svgUrl(svg))
-  element.style.setProperty('--t3-icon-color', providerBrand(slug) === 'anthropic' ? '#d97757' : 'currentColor')
-}
+
 // Pre-colored because a pseudo-element background cannot be masked separately.
 function rowIconUrl(slug) {
   return svgUrl(providerSvg(slug, providerBrand(slug) === 'anthropic' ? '#d97757' : '#9a9a9a').svg)
 }
-function providerShortName(provider) {
-  const slug = provider.slug
-  if (slug === 'openai-codex') return 'Codex'
-  if (providerBrand(slug) === 'openai') return 'OpenAI'
-  if (providerBrand(slug) === 'anthropic') return 'Claude'
-  if (/^(gemini|google|google-ai-studio)$/.test(slug)) return 'Gemini'
-  if (/^opencode(?:-|$)/.test(slug)) return 'OpenCode'
-  return provider.name
-}
+
 // T3's getDisplayModelName: vendor-prefixed, title-cased, no effort/context tags.
 function t3ModelLabel(model) {
   const { name, tag } = nativeModelParts(model)
@@ -802,819 +566,33 @@ function t3ModelLabel(model) {
   const variant = tag.match(/\b(Fast|Flash)\b/)?.[1]
   return variant ? label + ' ' + variant : label
 }
-const EFFORT_LABELS = { none: 'Off', off: 'Off', min: 'Minimal', minimal: 'Minimal', low: 'Low', med: 'Medium', medium: 'Medium', high: 'High', xhigh: 'Extra High', max: 'Max' }
-// "Med" + claude-opus-5-5[1m] -> "Medium · 1M", like T3's traits trigger.
-function t3EffortLabel(effort, model) {
-  const long = EFFORT_LABELS[effort.trim().toLowerCase()] || effort.trim()
-  const context = model?.match(/\[(\d+[mk])\]$/i)?.[1].toUpperCase()
-  return context ? `${long} · ${context}` : long
-}
 
+// The painted theme (it follows a preview too) is named "<skin>-<mode>".
+const useT3 = sdk => /^t3-code-theme-(dark|light)$/.test(sdk.useTheme().theme?.name)
 
-// Hermes gives "data-tour" only to the primary chat's pill (it must be unique),
-// so a tile's pill is found by position: it renders first in the wrapper it
-// shares with the reasoning pill, or by its "Model · provider: model" label.
-function findTilePills() {
-  return Array.from(document.querySelectorAll('[data-slot="composer-fade"]'))
-    .filter(fade => !fade.querySelector('[data-tour="model-pill"]'))
-    .map(modelPillIn).filter(Boolean)
-}
-function modelPillIn(fade) {
-  const tour = fade.querySelector('[data-tour="model-pill"]')
-  if (tour) return tour
-  const reasoning = fade.querySelector('[data-testid="reasoning-pill"]')
-  const first = reasoning?.parentElement.querySelector(':scope > button')
-  if (first && first !== reasoning) return first
-  return Array.from(fade.querySelectorAll('[class*="grid-area:controls"] button'))
-    .find(b => /^(Model · |Open model picker$)/.test(b.getAttribute('aria-label') || '')) || null
-}
-
-// Icons only need provider names, not session ownership: with a tile focused
-// the owner-bound catalog is unresolved, so any loaded catalog will do.
-function anyCatalogProviders(client) {
-  const bySlug = new Map()
-  for (const q of client.getQueryCache().findAll({ queryKey: ['model-options'] })) {
-    for (const p of q.state.data?.providers || []) if (p?.slug && p?.name && !bySlug.has(p.slug)) bySlug.set(p.slug, p)
-  }
-  return Array.from(bySlug.values())
-}
-
-const PENDING_PICK_MS = 4000
-function installPicker(ctx, sdk) {
-  if (typeof MutationObserver === 'undefined' || !sdk?.queryClient || !sdk?.host?.state?.focusedSessionOwner) return
-  const style = document.createElement('style'); style.dataset.t3Chat = 'picker'; style.textContent = pickerCss; document.head.append(style)
-  let disposed = false, pending = false, active = null
-  // Last resolved catalog providers. While a chat opens, its catalog query is
-  // briefly unresolved; painting the pill icon from this cache keeps the logo
-  // from blinking off and on. Menu enhancement still requires a live catalog.
-  let knownProviders = []
-  // Pill -> painted provider slug, for the primary pill and every tile pill.
-  const painted = new Map(), tilePills = new Set()
-  // A pick in a live primary chat only repaints Hermes' draft atom; the pill
-  // follows the session slice, which waits for the gateway's session.info
-  // (~1s). Show the pick on the primary pill until its own label moves, a
-  // confirm dialog takes over, or PENDING_PICK_MS passes (a failed switch).
-  let pendingPick = null
-  const clearPending = () => {
-    if (!pendingPick) return
-    clearTimeout(pendingPick.timer)
-    pendingPick.pill.removeAttribute('data-t3-pending-label')
-    pendingPick.pill.style.removeProperty('--t3-pending-label')
-    const { pill } = pendingPick
-    pendingPick = null
-    if (pill.isConnected) cleanIcon(pill)
-  }
-  function onPick(event) {
-    if (event.target.closest?.('[data-t3-favorite]')) return
-    const row = event.target.closest?.('[data-t3-picker] [data-slot="dropdown-menu-sub-trigger"]:not([data-t3-current])')
-    const model = row?.getAttribute('data-t3-model'), slug = row?.getAttribute('data-t3-provider')
-    const menu = row?.closest('[data-t3-picker]')
-    const pill = menu?.id && document.querySelector(`[data-tour="model-pill"][aria-controls="${CSS.escape(menu.id)}"]`)
-    if (!model || !slug || !pill) return
-    clearPending()
-    pendingPick = { pill, slug, from: pill.getAttribute('aria-label'), timer: setTimeout(() => { clearPending(); schedule() }, PENDING_PICK_MS) }
-    const label = t3ModelLabel(model)
-    pill.setAttribute('data-t3-pending-label', label)
-    pill.style.setProperty('--t3-pending-label', JSON.stringify(label))
-    cleanIcon(pill)
-    pill.dataset.t3Provider = slug
-    paintProviderIcon(pill, slug)
-    painted.set(pill, slug)
-  }
-  document.addEventListener('click', onPick, true)
-  const cleanIcon = pill => {
-    pill.removeAttribute('data-t3-provider')
-    pill.removeAttribute('data-t3-color-icon')
-    for (const prop of ['--t3-provider-image', '--t3-provider-icon', '--t3-icon-color']) pill.style.removeProperty(prop)
-    painted.delete(pill)
-  }
-  const cleanTrigger = () => {
-    painted.forEach((slug, pill) => cleanIcon(pill))
-    tilePills.forEach(pill => pill.removeAttribute('data-t3-model-pill'))
-    tilePills.clear()
-  }
-  // Uses each pill's own "provider: model" label, never host.state.model (global).
-  function paintPill(pill) {
-    if (pendingPick?.pill === pill) {
-      if (pill.isConnected && pill.getAttribute('aria-label') === pendingPick.from && !document.querySelector('[data-slot="dialog-content"]')) return pendingPick.slug
-      clearPending()
-    }
-    const title = pill.getAttribute('aria-label') || ''
-    const matches = knownProviders.filter(p => title.includes(p.name + ': ') || title.includes(p.slug + ': ')
-      || (p.slug === 'anthropic' && title.includes('Anthropic API Key: ')))
-    const slug = matches.length === 1 ? matches[0].slug : null
-    // A label without "provider: model" is the loading state: keep the icon.
-    const loadingLabel = !title.includes(': ')
-    if (painted.get(pill) === slug || (loadingLabel && painted.has(pill))) return slug
-    cleanIcon(pill)
-    if (slug) {
-      pill.dataset.t3Provider = slug
-      paintProviderIcon(pill, slug)
-      painted.set(pill, slug)
-    }
-    return slug
-  }
-  const teardown = () => { active?.dispose(); active = null }
-  function sync() {
-    pending = false
-    if (disposed) return
-    observer.disconnect()
-    try {
-      if (document.documentElement.dataset.hermesTheme !== 't3-code-theme') { clearPending(); teardown(); cleanTrigger(); return }
-      const catalog = resolveCatalog(sdk.host, sdk.queryClient)
-      if (catalog) knownProviders = catalog.data.providers
-      else if (!knownProviders.length) knownProviders = anyCatalogProviders(sdk.queryClient)
-      for (const pill of painted.keys()) if (!pill.isConnected) painted.delete(pill)
-      for (const pill of tilePills) if (!pill.isConnected) tilePills.delete(pill)
-      // Tile pills have no data-tour: mark them for layout and icon.
-      for (const pill of findTilePills()) {
-        if (!tilePills.has(pill)) { pill.setAttribute('data-t3-model-pill', ''); tilePills.add(pill) }
-        paintPill(pill)
-      }
-      // The open pill wins (primary or tile); otherwise track the primary one.
-      const trigger = Array.from(document.querySelectorAll('[data-tour="model-pill"], [data-t3-model-pill]'))
-        .find(p => p.getAttribute('aria-expanded') === 'true') || document.querySelector('[data-tour="model-pill"]')
-      if (!trigger) { teardown(); return }
-      const slug = paintPill(trigger)
-      // data-tour already proves the primary chat (Hermes keeps it unique);
-      // a tile pill proves its session through its surface's composer target.
-      const surface = trigger.hasAttribute('data-tour') ? 'main' : trigger.closest('[data-chat-surface]')?.getAttribute('data-composer-target')
-      const owned = surface === 'main' ? catalog : surface ? resolveCatalog(sdk.host, sdk.queryClient, surface) : null
-      if (!owned) { teardown(); return }
-      const providers = owned.data.providers
-      const menu = trigger.getAttribute('aria-expanded') === 'true' ? document.getElementById(trigger.getAttribute('aria-controls')) : null
-      if (!menu || menu.dataset.slot !== 'dropdown-menu-content' || !menu.querySelector('[data-slot="dropdown-menu-search"] input')) { teardown(); return }
-      const key = JSON.stringify(owned.key)
-      if (active && (active.menu !== menu || active.key !== key)) teardown()
-      if (!active) active = enhanceNativeMenu(ctx, menu, key, schedule, slug)
-      active.update(providers)
-    } catch (error) {
-      teardown(); cleanTrigger()
-      // Fail open to the original native picker; no model RPC is attempted.
-      console.warn('[t3-code-theme] Native picker fallback:', error instanceof Error ? error.message : 'incompatible surface')
-    } finally {
-      if (!disposed) observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['data-hermes-theme','aria-expanded','aria-label','data-state','data-kb-active']})
-    }
-  }
-  function schedule() { if (!pending && !disposed) { pending = true; queueMicrotask(sync) } }
-  const observer = new MutationObserver(records => {
-    // Ignore transcript streaming: observe geometry/control metadata, not text.
-    const selector = '[data-tour="model-pill"],[data-slot="composer-fade"],[data-slot="dropdown-menu-content"]'
-    if (records.some(r => r.target === document.documentElement || r.target.closest?.(selector)
-      || Array.from(r.addedNodes).some(n => n.nodeType === 1 && (n.matches(selector) || n.querySelector(selector)))
-      || Array.from(r.removedNodes).some(n => n.nodeType === 1 && (n.matches(selector) || n.querySelector(selector))))) schedule()
-  })
-  const uncache = sdk.queryClient.getQueryCache().subscribe(event => { if (event.query?.queryKey?.[0] === 'model-options') schedule() })
-  const unstates = ['activeSessionId','focusedSessionId','focusedStoredSessionId','focusedSessionOwner'].map(k => sdk.host.state[k]?.listen?.(schedule)).filter(Boolean)
-  ctx.onDispose(() => { disposed = true; document.removeEventListener('click', onPick, true); clearPending(); observer.disconnect(); uncache(); unstates.forEach(fn=>fn()); teardown(); cleanTrigger(); style.remove() })
-  sync()
-}
-
-function enhanceNativeMenu(ctx, menu, key, schedule, initialProvider = null) {
-  let filter = initialProvider || 'favorites'
-  let entries = [], groups = [], keyboardRow = null, sidebarSignature = ''
-  const stars = new Map(), marked = new Set(), ariaOriginals = new Map(), styled = new Set()
-  // Sets an ARIA attribute and remembers the native value for dispose.
-  const aria = (el, attr, value) => {
-    if (!ariaOriginals.has(el)) ariaOriginals.set(el, new Map())
-    const saved = ariaOriginals.get(el)
-    if (!saved.has(attr)) saved.set(attr, el.getAttribute(attr))
-    if (value === null) el.removeAttribute(attr)
-    else if (el.getAttribute(attr) !== value) el.setAttribute(attr, value)
-  }
-  const mark = (el, attr, value = '') => {
-    if (el.getAttribute(attr) !== value) el.setAttribute(attr, value)
-    marked.add(el)
-  }
-  const create = (tag, data, attrs = {}) => {
-    const el = document.createElement(tag)
-    Object.assign(el.dataset, data)
-    for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value)
-    return el
-  }
-  const stop = event => { event.preventDefault(); event.stopImmediatePropagation() }
-
-  const sidebar = create('div', { t3Sidebar: '' }, { role: 'group', 'aria-label': 'Providers' })
-  const indicator = create('div', { t3RailIndicator: '' }, { 'aria-hidden': 'true' })
-  const empty = create('div', { t3Empty: '' }, { role: 'status' })
-  menu.append(sidebar, empty)
-  menu.dataset.t3Picker = 'v2'
-  const isVisible = e => !e.closest('[data-t3-filtered]') && e.getClientRects().length > 0
-  const visibleRows = () => entries.map(e => e.row).filter(isVisible)
-  const input = menu.querySelector('[data-slot="dropdown-menu-search"] input')
-  const nativePlaceholder = input.getAttribute('placeholder')
-
-  function applyFilter() {
-    const favorites = readFavorites(ctx.storage)
-    for (const e of entries) {
-      const show = filter === e.provider.slug
-        || (filter === 'favorites' && e.model && favorites.has(favoriteKey(e.provider.slug, e.model)))
-      if (show) e.row.removeAttribute('data-t3-filtered')
-      else mark(e.row, 'data-t3-filtered')
-      const star = stars.get(e.row)
-      if (star) {
-        const liked = favorites.has(star.dataset.t3Favorite)
-        star.setAttribute('aria-pressed', String(liked))
-        star.setAttribute('aria-label', (liked ? 'Remove from favorites: ' : 'Add to favorites: ') + e.provider.name + ' · ' + e.model)
-      }
-    }
-    for (const g of groups) {
-      const show = filter === g.provider.slug
-        || (filter === 'favorites' && entries.some(e => e.group === g.node && !e.row.hasAttribute('data-t3-filtered')))
-      if (show) g.node.removeAttribute('data-t3-filtered')
-      else mark(g.node, 'data-t3-filtered')
-    }
-    const buttons = Array.from(sidebar.querySelectorAll('button'))
-    buttons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.t3ProviderFilter === filter)))
-    const pressed = buttons.find(b => b.dataset.t3ProviderFilter === filter)
-    indicator.hidden = !pressed
-    if (pressed) indicator.style.top = `${pressed.offsetTop + pressed.offsetHeight / 2 - 10}px`
-    if (!keyboardRow || !isVisible(keyboardRow)) keyboardRow = null
-    // T3 numbers the first nine visible rows; ⌘1-9 picks them (see onKey).
-    const rows = visibleRows()
-    for (const e of entries) {
-      const n = rows.indexOf(e.row)
-      mark(e.row, 'data-t3-kbd', n >= 0 && n < 9 ? `⌘${n + 1}` : '')
-      e.row.toggleAttribute('data-t3-kb-active', e.row === keyboardRow)
-      aria(e.row, 'aria-current', e.row.hasAttribute('data-t3-current') ? 'true' : null)
-    }
-    aria(input, 'aria-activedescendant', keyboardRow?.id || null)
-    const query = input.value.trim()
-    menu.toggleAttribute('data-t3-searching', query !== '')
-    empty.textContent = rows.length ? '' : filter === 'favorites' && !query ? 'No favorite models yet' : 'No models found'
-  }
-
-  // This exact connected element belongs to the OPEN native menu. Native
-  // activate owns session, model guard, remembered presets and close.
-  const activate = row => { if (row && isVisible(row) && menu.contains(row) && row.isConnected) row.click() }
-  const cycle = (list, at, step) => list[(at + step + list.length) % list.length]
-
-  function onKey(event) {
-    if (event.isComposing || event.keyCode === 229) return
-    if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && /^[1-9]$/.test(event.key)) {
-      // Same exact-native-row delegation as Enter: Hermes owns the switch.
-      const row = visibleRows()[Number(event.key) - 1]
-      if (row) {
-        stop(event)
-        if (menu.contains(row) && row.isConnected) row.click()
-      }
-      return
-    }
-    if (event.ctrlKey || event.metaKey || event.altKey) return
-    const target = event.target
-    const inRail = target.closest('[data-t3-sidebar]')
-    if (inRail || target.closest('[data-t3-favorite]')) {
-      // Native Radix must not treat Space/Enter on a favorite as a model pick.
-      if (event.key === 'Enter' || event.key === ' ') {
-        stop(event)
-        target.closest('button')?.click()
-      }
-      if (inRail && event.key === 'ArrowRight') {
-        stop(event)
-        input.focus()
-      }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        stop(event)
-        const buttons = Array.from(sidebar.querySelectorAll('button'))
-        const at = buttons.indexOf(target)
-        if (at >= 0) cycle(buttons, at, event.key === 'ArrowDown' ? 1 : -1).focus()
-      }
-    } else if (target.matches('[data-slot="dropdown-menu-search"] input') || target.closest('[data-t3-model]')) {
-      // Favorites/provider filtering share one visible-only keyboard list.
-      // Mouse clicks and per-row option submenus retain their original handlers.
-      const rows = visibleRows()
-      if (event.key === 'ArrowRight') {
-        stop(event)
-        return
-      }
-      if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
-        stop(event)
-        const current = rows.indexOf(keyboardRow || target.closest('[data-t3-model]'))
-        const from = current >= 0 ? current : event.key === 'ArrowUp' ? 0 : -1
-        keyboardRow = (event.key === 'Home' ? rows[0]
-          : event.key === 'End' ? rows[rows.length - 1]
-            : cycle(rows, from, event.key === 'ArrowUp' ? -1 : 1)) || null
-        applyFilter()
-        keyboardRow?.scrollIntoView({ block: 'nearest' })
-      } else if (event.key === 'Enter' || (event.key === ' ' && !target.matches('input'))) {
-        stop(event)
-        activate(keyboardRow || target.closest('[data-t3-model]') || rows.find(r => r.hasAttribute('data-t3-current')) || rows[0])
-      }
-    }
-    if (event.key === 'Tab') {
-      const focusables = Array.from(menu.querySelectorAll('input,button,[data-t3-model],[data-slot="dropdown-menu-item"]'))
-        .filter(e => !e.disabled && isVisible(e))
-      if (focusables.length) {
-        stop(event)
-        cycle(focusables, focusables.indexOf(document.activeElement), event.shiftKey ? -1 : 1).focus()
-      }
-    }
-    // Escape stays native; model options live only in the reasoning pill.
-  }
-  // Stop Radix's hover-open handler only on model rows; preserve native clicks.
-  const noModelHover = event => { if (event.target.closest?.('[data-t3-model]')) event.stopImmediatePropagation() }
-  const hoverEvents = ['pointermove', 'pointerover', 'mouseover']
-  hoverEvents.forEach(type => menu.addEventListener(type, noModelHover, true))
-  menu.addEventListener('keydown', onKey, true)
-  const onInput = () => { keyboardRow = null; schedule() }
-  input.addEventListener('input', onInput)
-  if (nativePlaceholder === 'Search models') input.setAttribute('placeholder', 'Search models...')
-
-  function addStar(row, provider, model) {
-    const star = create('button', { t3Favorite: favoriteKey(provider.slug, model) })
-    star.type = 'button'
-    star.innerHTML = starSvg
-    // Inside the native row (T3 layout); these stops keep Radix/React from selecting.
-    for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup']) star.addEventListener(type, e => e.stopPropagation())
-    star.addEventListener('click', e => {
-      e.preventDefault()
-      e.stopPropagation()
-      const favorites = readFavorites(ctx.storage)
-      const k = star.dataset.t3Favorite
-      if (favorites.has(k)) favorites.delete(k)
-      else favorites.add(k)
-      ctx.storage.set('modelFavorites.v1', Array.from(favorites))
-      applyFilter()
-    })
-    row.append(star)
-    stars.set(row, star)
-  }
-
-  function enhanceGroup(group, headerRow, provider) {
-    groups.push({ node: group, provider })
-    mark(group, 'data-t3-group')
-    // The provider rail replaces group labels; a collapsed group keeps its
-    // label visible so it can be expanded again.
-    mark(headerRow, 'data-t3-header')
-    if (headerRow.querySelector('.rotate-90')) headerRow.removeAttribute('data-t3-collapsed')
-    else mark(headerRow, 'data-t3-collapsed')
-    for (const row of group.querySelectorAll(':scope > [data-slot="dropdown-menu-sub-trigger"]')) {
-      const model = identifyNativeRow(row, provider)
-      mark(row, 'data-t3-provider', provider.slug)
-      mark(row, 'data-t3-model', model || '')
-      row.toggleAttribute('data-t3-current', !!row.querySelector('.codicon-check'))
-      entries.push({ row, group, provider, model })
-      if (!model) {
-        stars.get(row)?.remove()
-        stars.delete(row)
-        continue
-      }
-      const tag = nativeModelParts(model).tag
-      mark(row, 'data-t3-sub', providerShortName(provider) + (tag ? ' · ' + tag : ''))
-      row.style.setProperty('--t3-row-icon', rowIconUrl(provider.slug))
-      styled.add(row)
-      const name = row.querySelector(':scope > span')
-      if (name) mark(name, 'data-t3-label', t3ModelLabel(model))
-      if (!stars.has(row)) addStar(row, provider, model)
-      else if (stars.get(row).parentElement !== row) row.append(stars.get(row))
-    }
-  }
-
-  function renderRail(used) {
-    sidebar.replaceChildren(indicator)
-    for (const p of [{ slug: 'favorites', name: 'Favorites' }, ...used]) {
-      const button = create('button', { t3ProviderFilter: p.slug }, { 'aria-label': p.name })
-      button.type = 'button'
-      button.title = p.name
-      const icon = create('span', {}, { 'aria-hidden': 'true' })
-      if (p.slug === 'favorites') {
-        icon.dataset.t3StarIcon = ''
-        icon.innerHTML = starSvg
-      } else {
-        icon.dataset.t3ProviderIcon = p.slug
-        paintProviderIcon(icon, p.slug)
-      }
-      const label = document.createElement('span')
-      label.textContent = p.name
-      button.append(icon, label)
-      button.addEventListener('click', () => {
-        filter = p.slug
-        keyboardRow = null
-        applyFilter()
-        const scroller = groups[0]?.node.parentElement
-        if (scroller) scroller.scrollTop = 0
-        schedule()
-      })
-      sidebar.append(button)
-      if (p.slug === 'favorites') sidebar.append(create('div', { t3RailSep: '' }, { 'aria-hidden': 'true' }))
-    }
-  }
-
-  return {
-    menu, key,
-    update(providers) {
-      entries = []
-      groups = []
-      for (const group of menu.querySelectorAll('[data-slot="dropdown-menu-group"]')) {
-        const headerRow = group.querySelector(':scope > [data-slot="dropdown-menu-item"]')
-        const header = headerRow?.querySelector(':scope > span')
-        const found = providers.filter(p => p.name === header?.textContent)
-        if (found.length === 1) enhanceGroup(group, headerRow, found[0])
-      }
-      for (const [row, star] of stars) {
-        if (!menu.contains(row)) {
-          star.remove()
-          stars.delete(row)
-        }
-      }
-      // Virtual MoA rows stay native and hidden: do not reinterpret a preset
-      // as a regular model or fabricate provider capabilities.
-      for (const row of menu.querySelectorAll(':scope > div > [data-slot="dropdown-menu-item"]')) {
-        if (row.parentElement.querySelector('[data-slot="dropdown-menu-label"]') && !row.closest('[data-t3-group]')) mark(row.parentElement, 'data-t3-filtered')
-      }
-      const used = Array.from(new Map(groups.map(g => [g.provider.slug, g.provider])).values())
-      const signature = JSON.stringify(used.map(p => [p.slug, p.name]))
-      if (signature !== sidebarSignature) {
-        sidebarSignature = signature
-        renderRail(used)
-      }
-      applyFilter()
-    },
-    dispose() {
-      menu.removeEventListener('keydown', onKey, true)
-      input.removeEventListener('input', onInput)
-      hoverEvents.forEach(type => menu.removeEventListener(type, noModelHover, true))
-      if (input.getAttribute('placeholder') === 'Search models...' && nativePlaceholder !== null) input.setAttribute('placeholder', nativePlaceholder)
-      sidebar.remove()
-      empty.remove()
-      stars.forEach(s => s.remove())
-      menu.removeAttribute('data-t3-picker')
-      menu.removeAttribute('data-t3-searching')
-      styled.forEach(el => el.style.removeProperty('--t3-row-icon'))
-      for (const [el, attrs] of ariaOriginals) {
-        for (const [attr, value] of attrs) {
-          if (value === null) el.removeAttribute(attr)
-          else el.setAttribute(attr, value)
-        }
-      }
-      const attrs = ['data-t3-model', 'data-t3-provider', 'data-t3-current', 'data-t3-group', 'data-t3-kb-active', 'data-t3-filtered', 'data-t3-header', 'data-t3-collapsed', 'data-t3-sub', 'data-t3-kbd', 'data-t3-label']
-      for (const el of marked) attrs.forEach(attr => el.removeAttribute(attr))
-    }
-  }
-}
-
-// Composer label and hero: T3 model names, "Medium · 1M" traits label and the
-// "What should we build in <project>?" draft headline. All reversible.
-function installComposerExtras(ctx, sdk) {
-  if (typeof MutationObserver === 'undefined') return
-  const isT3 = () => document.documentElement.dataset.hermesTheme === 't3-code-theme'
-  // The host memoizes pill labels on registry changes, so re-register when the
-  // theme flips to refresh the label immediately.
-  let unregisterLabel = null, labelTheme = null
-  const registerLabel = () => {
-    if (labelTheme === isT3()) return
-    labelTheme = isT3(); unregisterLabel?.()
-    unregisterLabel = ctx.register({ id: 'model-pill-label', area: 'composer.modelPill', data: {
-      label: ({ model }) => isT3() && model?.trim() ? t3ModelLabel(model) : null
+// T3 model names on the composer pill ("Claude Opus 5.5"), through the SDK's
+// label provider. The host memoizes labels on registry changes, so the provider
+// is registered only while this theme is painted. A contribution in the
+// composer's top slot (mounted wherever a pill is) follows the theme through
+// useTheme and renders nothing.
+function installModelLabel(ctx, sdk) {
+  const areas = sdk?.COMPOSER_AREAS
+  if (!sdk?.useTheme || !areas?.top || !areas.modelPill) return
+  let unregister = null, disposed = false
+  const set = active => {
+    if (disposed || active === !!unregister) return
+    if (unregister) { unregister(); unregister = null; return }
+    unregister = ctx.register({ id: 'model-pill-label', area: areas.modelPill, data: {
+      label: ({ model }) => model?.trim() ? t3ModelLabel(model) : null
     } })
   }
-  const labelled = new Set()
-  let hero = null, crumb = null, frame = 0, connections = null
-  const tabCrumbs = new Map(), chips = new Map(), connectionByAnchor = new Map(), tileProjects = new Map()
-  const chatTabs = new Map(), chatStrips = new Set(), tileProviders = new Map()
-  // Last provider per tab id (tab ids are stable across restarts); pruned to open tabs.
-  let tabProviders = (() => { const saved = ctx.storage?.get?.('tabProviders.v1', {}); return saved && typeof saved === 'object' ? saved : {} })()
-  const cwd = sdk?.host?.state?.cwd
-  const focused = sdk?.host?.state?.focusedStoredSessionId
-  function sync() {
-    frame = 0
-    registerLabel()
-    if (!isT3()) { cleanup(); return }
-    // A stored session being opened shows the intro while it hydrates; only a
-    // real draft (no session at all) may center the composer, or opening a
-    // chat flashes the composer from the middle to the bottom.
-    const draft = !focused?.get?.() && !sdk?.host?.state?.activeSessionId?.get?.()
-    document.documentElement.toggleAttribute('data-t3-draft', draft)
-    for (const pill of document.querySelectorAll('[data-slot="composer-fade"] [data-testid="reasoning-pill"]')) {
-      const span = pill.querySelector(':scope > span')
-      if (!span || span.dataset.slot) continue
-      // Pending effort renders Hermes' braille GlyphSpinner; never label it.
-      if (span.querySelector('.glyph-spinner')) { span.removeAttribute('data-t3-label'); continue }
-      const effort = span.textContent
-      const fade = pill.closest('[data-slot="composer-fade"]')
-      const trigger = fade && modelPillIn(fade)
-      const model = (trigger?.getAttribute('aria-label') || '').split(': ').pop()
-      const label = effort.trim() ? t3EffortLabel(effort, model) : ''
-      if (label && span.dataset.t3Label !== label) span.dataset.t3Label = label
-      labelled.add(span)
-    }
-    const intro = document.querySelector('[data-slot="aui_intro"] > div')
-    if (intro && (!hero || hero.parentElement !== intro)) {
-      hero?.remove()
-      hero = document.createElement('h1'); hero.dataset.t3Hero = ''
-      intro.append(hero)
-    }
-    if (hero) {
-      const project = (cwd?.get?.() || '').replace(/\/+$/, '').split('/').pop()
-      const text = project ? `What should we build in ${project}?` : 'What should we build?'
-      if (hero.textContent !== text) {
-        hero.replaceChildren()
-        if (project) { const name = document.createElement('span'); name.textContent = project; hero.append('What should we build in ', name, '?') }
-        else hero.append(text)
-      }
-    }
-    syncBreadcrumb()
-    syncTabCrumbs()
-    syncConnection()
+  ctx.onDispose(() => { disposed = true })
+  function ThemeWatch() {
+    const active = useT3(sdk)
+    useEffect(() => set(active), [active])
+    return null
   }
-  // Where each chat runs: this Mac or a registered remote (e.g. the home
-  // server), shown in the tray under its composer, left of the branch. The
-  // SDK only reports the FOCUSED session's owner, so each surface keeps the
-  // last connection seen while it held focus; the primary chat falls back to
-  // the active connection, and a tile never seen focused shows no chip.
-  function syncConnection() {
-    const state = sdk?.host?.state
-    const stored = state?.focusedStoredSessionId?.get?.()
-    const focusedAnchor = stored && document.querySelector(`[data-chat-surface][data-session-anchor="session-tile:${CSS.escape(stored)}"]`)
-      ? `session-tile:${stored}` : 'workspace'
-    const owner = state?.focusedSessionOwner?.get?.()
-    if (owner?.connectionId) connectionByAnchor.set(focusedAnchor, owner.connectionId)
-    const seen = new Set()
-    for (const drawer of document.querySelectorAll('[data-slot="composer-dock"]:not([data-popped-out]) [data-slot="composer-surface"] > .status-drawer .status-drawer-content')) {
-      if (drawer.closest('[data-hud-shell]')) continue
-      const anchor = drawer.closest('[data-chat-surface]')?.getAttribute('data-session-anchor') || 'workspace'
-      const id = connectionByAnchor.get(anchor) || (anchor === 'workspace' ? state?.connectionId?.get?.() || 'local' : null)
-      if (!id) continue
-      const bar = drawer.querySelector('.coding-status-bar')
-      const host = bar || drawer
-      let chip = chips.get(drawer)
-      if (!chip || chip.parentElement !== host) {
-        chip?.remove()
-        chip = document.createElement('span')
-        chip.dataset.t3Connection = ''
-        host.prepend(chip)
-        chips.set(drawer, chip)
-      }
-      chip.toggleAttribute('data-t3-standalone', !bar)
-      const row = connections?.find(c => c.id === id)
-      const local = id === 'local' || row?.kind === 'local'
-      const label = local ? 'Local' : row?.label || id
-      if (chip.dataset.t3ConnectionKind !== (local ? 'local' : 'remote') || chip.textContent !== label) {
-        chip.dataset.t3ConnectionKind = local ? 'local' : 'remote'
-        chip.textContent = label
-        chip.title = local ? 'Running on this device' : `Running on ${label}`
-      }
-      if (!local && !row && connections === null) loadConnections()
-      seen.add(drawer)
-    }
-    for (const [drawer, chip] of chips) {
-      if (!seen.has(drawer)) { chip.remove(); chips.delete(drawer) }
-    }
-  }
-  let loading = false
-  function loadConnections() {
-    if (loading || !sdk?.host?.connections) return
-    loading = true
-    sdk.host.connections().then(rows => { connections = rows }, () => { connections = [] }).finally(() => { loading = false; schedule() })
-  }
-  // T3's "vtt / New thread" header crumb, drawn over the chat pane's drag
-  // strip (pointer-events: none keeps window dragging intact). The title is
-  // read from the selected sidebar row; without one it shows only the project.
-  function syncBreadcrumb() {
-    const header = Array.from(document.querySelectorAll('[data-window-top="true"]:has([data-chat-surface]) [data-panel-header]'))
-      .find(h => h.getBoundingClientRect().width > 0 && !h.querySelector('[role="tablist"]'))
-    const project = (cwd?.get?.() || '').replace(/\/+$/, '').split('/').pop()
-    if (!header || !project) { crumb?.remove(); crumb = null; return }
-    if (!crumb || crumb.parentElement !== header) {
-      crumb?.remove(); crumb = document.createElement('div'); crumb.dataset.t3Crumb = ''; header.append(crumb)
-    }
-    const title = document.documentElement.hasAttribute('data-t3-draft') ? 'New thread'
-      : document.querySelector('[data-tour="sessions-sidebar"] [class~="bg-(--ui-row-active-background)"] .hover-marquee-inner')?.textContent.trim() || ''
-    fillCrumb(crumb, project, title)
-  }
-  // With tabs the header is the tab strip, so each chat gets the crumb as a
-  // bar at the top of its pane. A surface's data-session-anchor equals its
-  // tab's data-tree-tab. The primary chat's project comes from host.state.cwd;
-  // a tile's from its persisted session row (see loadTileProjects).
-  function syncTabCrumbs() {
-    const project = (cwd?.get?.() || '').replace(/\/+$/, '').split('/').pop()
-    const seen = new Set(), seenTabs = new Set(), unknown = []
-    for (const surface of document.querySelectorAll('[data-chat-surface][data-session-anchor]')) {
-      if (surface.closest('[data-hud-shell]')) continue
-      const anchor = surface.getAttribute('data-session-anchor')
-      const tab = Array.from(surface.closest('[data-tree-group]')?.querySelectorAll('[data-panel-header] [role="tab"]') || [])
-        .find(t => t.getAttribute('data-tree-tab') === anchor)
-      const bounds = surface.querySelector(':scope > [data-slot="composer-bounds"]')
-      if (!tab || !bounds) continue
-      const fade = surface.querySelector('[data-slot="composer-fade"]')
-      markChatTab(tab, (fade && modelPillIn(fade))?.getAttribute('data-t3-provider'))
-      seenTabs.add(tab)
-      const tileId = anchor.startsWith('session-tile:') ? anchor.slice('session-tile:'.length) : null
-      if (tileId && !tileProjects.has(tileId)) unknown.push(tileId)
-      // The Codex-style tab already carries the title: the bar shows only the project.
-      const tabProject = tileId ? tileProjects.get(tileId) || '' : project
-      if (!tabProject) continue
-      let bar = tabCrumbs.get(surface)
-      if (!bar || bar.parentElement !== bounds) {
-        bar?.remove()
-        bar = document.createElement('div')
-        bar.dataset.t3Crumb = ''
-        bar.dataset.t3TabCrumb = ''
-        bounds.append(bar)
-        tabCrumbs.set(surface, bar)
-      }
-      fillCrumb(bar, tabProject, '')
-      seen.add(surface)
-    }
-    // Hermes mounts a tab's pane only once it is visited: the other tabs of a
-    // chat strip take their provider from the persisted session row.
-    for (const strip of chatStrips) {
-      for (const tab of strip.querySelectorAll('[role="tab"][data-tree-tab]')) {
-        if (seenTabs.has(tab)) continue
-        const id = tab.getAttribute('data-tree-tab')
-        const tileId = id.startsWith('session-tile:') ? id.slice('session-tile:'.length) : null
-        if (tileId && !tileProviders.has(tileId)) unknown.push(tileId)
-        markChatTab(tab, tileId ? tileProviders.get(tileId) : null, newChatProvider())
-        seenTabs.add(tab)
-      }
-    }
-    if (unknown.length) loadTileProjects()
-    for (const [surface, bar] of tabCrumbs) {
-      if (!seen.has(surface)) { bar.remove(); tabCrumbs.delete(surface) }
-    }
-    for (const tab of chatTabs.keys()) if (!seenTabs.has(tab)) unmarkChatTab(tab)
-    const open = new Set(Array.from(seenTabs, tab => tab.getAttribute('data-tree-tab')))
-    if (open.size && Object.keys(tabProviders).some(id => !open.has(id))) {
-      tabProviders = Object.fromEntries(Object.entries(tabProviders).filter(([id]) => open.has(id)))
-      ctx.storage?.set?.('tabProviders.v1', tabProviders)
-    }
-    for (const strip of chatStrips) {
-      if (!strip.isConnected || !strip.querySelector('[data-t3-chat-tab]')) { strip.removeAttribute('data-t3-chat-strip'); chatStrips.delete(strip) }
-    }
-  }
-  // Chat tabs get Codex-style chrome (CSS on data-t3-chat-strip) and a provider
-  // icon: from the pane's model pill (painted by installPicker) or the session row.
-  // guess: shown only when nothing better is known, and never remembered.
-  function markChatTab(tab, slug, guess = null) {
-    const strip = tab.closest('[data-panel-header]')
-    if (strip && !strip.hasAttribute('data-t3-chat-strip')) { strip.setAttribute('data-t3-chat-strip', ''); chatStrips.add(strip) }
-    if (!tab.hasAttribute('data-t3-chat-tab')) tab.setAttribute('data-t3-chat-tab', '')
-    // No provider while the pill loads or the pane is unmounted (Hermes mounts
-    // the primary "workspace" pane only while its tab is active, and its tab id
-    // is not a session id): fall back to the last provider seen for this tab.
-    const id = tab.getAttribute('data-tree-tab')
-    if (slug && id && tabProviders[id] !== slug) {
-      tabProviders = { ...tabProviders, [id]: slug }
-      ctx.storage?.set?.('tabProviders.v1', tabProviders)
-    }
-    slug ||= (id && tabProviders[id]) || guess
-    if (!slug) { if (!chatTabs.has(tab)) chatTabs.set(tab, null); return }
-    if (chatTabs.get(tab) === slug) return
-    chatTabs.set(tab, slug)
-    const { svg, colored } = providerSvg(slug)
-    tab.style.setProperty('--t3-tab-icon', svgUrl(svg))
-    tab.style.setProperty('--t3-tab-icon-fill', providerBrand(slug) === 'anthropic' ? '#d97757' : 'currentColor')
-    tab.toggleAttribute('data-t3-tab-icon-color', colored)
-    tab.setAttribute('data-t3-tab-icon', slug)
-  }
-  // A draft tab never opened has no session row and no mounted pill; a new chat
-  // starts on the default model, which the cached global catalog reports.
-  function newChatProvider() {
-    const profile = sdk?.host?.state?.profile?.get?.() || 'default'
-    const queries = sdk?.queryClient?.getQueryCache?.().findAll({ queryKey: ['model-options', profile, 'global'] }) || []
-    return queries.map(q => q.state.data?.provider).find(Boolean) || null
-  }
-  function unmarkChatTab(tab) {
-    for (const attr of ['data-t3-chat-tab', 'data-t3-tab-icon', 'data-t3-tab-icon-color']) tab.removeAttribute(attr)
-    for (const prop of ['--t3-tab-icon', '--t3-tab-icon-fill']) tab.style.removeProperty(prop)
-    chatTabs.delete(tab)
-  }
-  // The SDK gives no cwd for a tile, but its persisted session row carries
-  // git_repo_root, the same key Hermes groups the sidebar by. Read-only REST on
-  // the active connection and profile; a session not found (a draft is only
-  // persisted after its first turn, or it lives elsewhere) shows no project.
-  // Throttled so a draft tile does not poll.
-  let projectsLoading = false, projectsLoadedAt = 0
-  function loadTileProjects() {
-    const list = sdk?.host?.listPersistedSessions
-    if (!list || projectsLoading || Date.now() - projectsLoadedAt < 10000) return
-    projectsLoading = true
-    const profile = sdk.host.state?.profile?.get?.() || 'default'
-    list(null, { profile, limit: 200 }).then(page => {
-      for (const row of page?.sessions || []) {
-        const root = (row.git_repo_root || row.cwd || '').replace(/\/+$/, '')
-        if (row.id && root) tileProjects.set(row.id, root.split('/').pop())
-        if (row.id && row.billing_provider) tileProviders.set(row.id, row.billing_provider)
-      }
-    }, () => {}).finally(() => { projectsLoading = false; projectsLoadedAt = Date.now(); schedule() })
-  }
-  function fillCrumb(el, project, title) {
-    const key = JSON.stringify([project, title])
-    if (el.dataset.t3CrumbKey === key) return
-    el.dataset.t3CrumbKey = key
-    const part = (attr, text) => { const span = document.createElement('span'); span.setAttribute(attr, ''); span.textContent = text; return span }
-    el.replaceChildren()
-    if (project) el.append(part('data-t3-crumb-badge', project.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase()), part('data-t3-crumb-project', project))
-    if (project && title) el.append(part('data-t3-crumb-sep', '/'))
-    if (title) el.append(part('data-t3-crumb-title', title))
-  }
-  function cleanup() {
-    document.documentElement.removeAttribute('data-t3-draft')
-    chips.forEach(chip => chip.remove()); chips.clear()
-    crumb?.remove(); crumb = null
-    tabCrumbs.forEach(bar => bar.remove()); tabCrumbs.clear()
-    Array.from(chatTabs.keys()).forEach(unmarkChatTab)
-    chatStrips.forEach(strip => strip.removeAttribute('data-t3-chat-strip')); chatStrips.clear()
-    hero?.remove(); hero = null
-    labelled.forEach(span => span.removeAttribute('data-t3-label')); labelled.clear()
-  }
-  const schedule = () => { if (!frame) frame = requestAnimationFrame(sync) }
-  const selector = '[data-slot="composer-fade"],[data-slot="aui_intro"],[data-tour="sessions-sidebar"],[data-panel-header]'
-  const observer = new MutationObserver(records => {
-    if (records.some(r => r.target === document.documentElement || r.target.closest?.(selector)
-      || Array.from(r.addedNodes).some(n => n.nodeType === 1 && (n.matches(selector) || n.querySelector(selector))))) schedule()
-  })
-  observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-hermes-theme', 'aria-label', 'aria-selected', 'class'] })
-  const unCwd = cwd?.listen?.(schedule), unFocused = focused?.listen?.(schedule),
-    unOwner = sdk?.host?.state?.focusedSessionOwner?.listen?.(() => { connections = null; schedule() }),
-    unActive = sdk?.host?.state?.activeSessionId?.listen?.(schedule),
-    unCatalog = sdk?.queryClient?.getQueryCache?.().subscribe?.(event => { if (event.query?.queryKey?.[0] === 'model-options') schedule() })
-  ctx.onDispose(() => { observer.disconnect(); unCwd?.(); unFocused?.(); unOwner?.(); unActive?.(); unCatalog?.(); if (frame) cancelAnimationFrame(frame); unregisterLabel?.(); cleanup() })
-  sync()
-}
-
-// Hermes DOM hooks this plugin depends on. Each group is only checked while its
-// anchor is on screen, so a closed picker or an empty thread is not a miss.
-// A miss means Hermes changed its markup and that part of the theme silently
-// fell back to native.
-const DOM_HOOKS = [
-  { group: 'composer', anchor: '[data-slot="composer-dock"]:not([data-popped-out]) [data-slot="composer-fade"]', hooks: {
-    'composer-root': '[data-slot="composer-root"]',
-    'composer-surface': '[data-slot="composer-surface"]',
-    'composer-rich-input': '[data-slot="composer-rich-input"]',
-    'input placeholder': '[data-slot="composer-fade"] [data-slot="composer-rich-input"][data-placeholder]',
-    'composer grid': '[data-slot="composer-fade"] > .grid',
-    'grid-area:input': '[data-slot="composer-fade"] [class*="grid-area:input"]',
-    'grid-area:controls': '[data-slot="composer-fade"] [class*="grid-area:controls"]',
-    'grid-area:menu': '[data-slot="composer-fade"] [class*="grid-area:menu"]',
-    'context menu icon': '[data-slot="composer-fade"] [class*="grid-area:menu"] .codicon-add',
-    // Hermes tags only the primary chat's pill; a tile's pill is marked by installPicker.
-    'model pill': '[data-slot="composer-fade"] :is([data-tour="model-pill"], [data-t3-model-pill])'
-  } },
-  // Hermes omits the pill for models without reasoning efforts.
-  { group: 'reasoning pill', anchor: '[data-slot="composer-fade"] [data-testid="reasoning-pill"]', hooks: {
-    'effort label': '[data-slot="composer-fade"] [data-testid="reasoning-pill"] > span'
-  } },
-  // hud: false marks chrome the HUD window does not have.
-  { group: 'status tray', hud: false, anchor: '[data-slot="composer-surface"] > .status-drawer', hooks: {
-    'status drawer content': '[data-slot="composer-surface"] > .status-drawer .status-drawer-content',
-    'status drawer toggle': '[data-slot="status-drawer-toggle"]'
-  } },
-  { group: 'thread', anchor: '[data-slot="aui_user-message-root"]', hooks: {
-    'thread column': '[data-slot="aui_thread-content"]',
-    'thread viewport': '[data-slot="aui_thread-viewport"]',
-    'user bubble': '[data-slot="aui_user-bubble-actions"] .composer-human-message'
-  } },
-  { group: 'draft hero', anchor: '[data-slot="aui_intro"]', hooks: {
-    'intro wordmark': '[data-slot="aui_intro"] > div > p',
-    't3 headline': '[data-t3-hero]'
-  } },
-  { group: 'chat header', hud: false, anchor: '[data-chat-surface]', hooks: {
-    'panel header': '[data-window-top="true"]:has([data-chat-surface]) [data-panel-header]',
-    'bottom statusbar': '[data-slot="statusbar"]'
-  } },
-  // Pages such as Capabilities keep the tab strip without a chat: not drift.
-  { group: 'tab crumb', hud: false, anchor: '[data-window-top="true"]:has([data-chat-surface]) [data-panel-header] [role="tablist"]', hooks: {
-    'tab session id': '[data-panel-header] [role="tab"][data-tree-tab]',
-    'surface session anchor': '[data-chat-surface][data-session-anchor]',
-    'composer bounds': '[data-chat-surface] > [data-slot="composer-bounds"]',
-    'thread viewport': '[data-slot="aui_thread-viewport"]'
-  } },
-  { group: 'sidebar', anchor: '[data-tour="sessions-sidebar"] [class~="bg-(--ui-row-active-background)"]', hooks: {
-    'active row title': '[data-tour="sessions-sidebar"] [class~="bg-(--ui-row-active-background)"] .hover-marquee-inner',
-    'row button title': '[data-tour="sessions-sidebar"] .row-hover [data-slot="row-button"] .hover-marquee',
-    'row time': '[data-tour="sessions-sidebar"] .row-hover .session-row-tail',
-    'row foot': '[data-tour="sessions-sidebar"] .row-hover [data-t3-row-foot]'
-  } },
-  { group: 'sidebar card', anchor: '[data-tour="sessions-sidebar"] .row-hover > [data-slot="row-button"][class~="flex-col"]', hooks: {
-    'card header': '[data-tour="sessions-sidebar"] .row-hover > [data-slot="row-button"][class~="flex-col"] > div:first-child > [class~="flex-1"]',
-    'card native footer': '[data-tour="sessions-sidebar"] .row-hover > [data-slot="row-button"][class~="flex-col"] > span:last-child',
-    'card badge': '[data-tour="sessions-sidebar"] .row-hover > [data-slot="row-button"][class~="flex-col"] [data-t3-row-badge]'
-  } },
-  { group: 'model picker', anchor: '[data-slot="composer-fade"] [data-tour="model-pill"][aria-expanded="true"]', hooks: {
-    'picker enhanced': '[data-t3-picker]',
-    'picker search': '[data-t3-picker] [data-slot="dropdown-menu-search"] input',
-    'provider groups': '[data-t3-picker] [data-t3-group]',
-    'row name span': '[data-t3-picker] [data-slot="dropdown-menu-sub-trigger"] > span > span:first-child',
-    // Zero identified rows means nativeModelParts drifted from Hermes' labels.
-    'identified model rows': '[data-t3-picker] [data-t3-model]:not([data-t3-model=""])',
-    'pill provider icon': '[data-tour="model-pill"][data-t3-provider]'
-  } }
-]
-
-// Returns { checked: [group], missing: ['group: hook'] } for the anchors on screen.
-function checkDomHooks(root = document) {
-  const checked = [], missing = []
-  const inHud = !!root.querySelector('[data-hud-shell]')
-  for (const { group, anchor, hooks, hud } of DOM_HOOKS) {
-    if ((inHud && hud === false) || !root.querySelector(anchor)) continue
-    checked.push(group)
-    for (const [name, selector] of Object.entries(hooks)) {
-      if (!root.querySelector(selector)) missing.push(`${group}: ${name}`)
-    }
-  }
-  const total = DOM_HOOKS.filter(g => !(inHud && g.hud === false)).length
-  return { checked, missing, total }
+  ctx.register({ id: 'theme-watch', area: areas.top, render: () => jsx(ThemeWatch, {}) })
 }
 
 // Sidebar rows, T3's thread card. One read of the persisted list feeds every
@@ -1623,50 +601,22 @@ function checkDomHooks(root = document) {
 // machine needs no marker, every other one gets its glyph. In the all-profiles
 // list Hermes tags rows served by another connected gateway with
 // connection_id; untagged rows are local. Rows not in the last read (new
-// chats) fall back to the active connection and trigger a quicker re-read.
+// chats) fall back to the active connection.
+// The list is only read while this theme is painted and a row is on screen;
+// under any other theme the rows render nothing and request nothing.
 const ROW_CARD_REFRESH_MS = 30_000
 const ROW_CARD_MISS_REFRESH_MS = 5_000
-const homeIcon = lucide('<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>')
 function installRowCard(ctx, sdk) {
   const host = sdk?.host
-  if (!host?.listPersistedSessions || !host.state?.connectionId || !sdk.atom || !sdk.useValue || !sdk.SESSION_ROW_AREAS) return
-  const style = document.createElement('style'); style.dataset.t3Chat = 'row-card'
-  const card = '[data-slot="row-button"][class~="flex-col"]'
-  style.textContent = `
-:root:not([data-hermes-theme="t3-code-theme"]) :is([data-t3-row-badge], [data-t3-row-foot]) { display: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-slot="row-button"]:not([class~="flex-col"]) [data-t3-row-badge] { display: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-row-badge] {
-  display: grid; place-items: center; flex: none; width: 16px; height: 16px; border-radius: 4px;
-  font-size: 8px; font-weight: 700; line-height: 1; letter-spacing: .02em; color: #fb923c; background: rgb(234 88 12 / 22%);
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-row-badge="home"] { background: rgb(129 129 129 / 18%); }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-row-badge="home"]::before {
-  content: ""; width: 10px; height: 10px; background: var(--t3-sidebar-muted-fg); mask: ${homeIcon} center / contain no-repeat;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-row-foot] { display: flex; flex: none; align-items: center; gap: 4px; pointer-events: none; }
-:root[data-hermes-theme="t3-code-theme"] [data-slot="row-button"]:not([class~="flex-col"]) [data-t3-row-foot] > :not([data-t3-row-machine]) { display: none; }
-:root[data-hermes-theme="t3-code-theme"] .row-hover:has(> ${card}) [data-t3-row-foot] {
-  position: absolute; left: 8px; right: 8px; bottom: 8px; height: 16px;
-}
-:root[data-hermes-theme="t3-code-theme"] [data-t3-row-branch] {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 12px; line-height: 16px; color: rgb(129 129 129 / 60%);
-}
-:root[data-hermes-theme="t3-code-theme"] .row-hover:has(> ${card}) [data-t3-row-branch]:empty { visibility: hidden; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-row-machine] {
-  flex: none; width: 12px; height: 12px;
-  background: rgb(163 163 163 / 70%); mask: ${serverIcon} center / contain no-repeat;
-}
-:root[data-hermes-theme="t3-code-theme"] .row-hover:has(> ${card}) [data-t3-row-machine] { width: 14px; height: 14px; }
-:root[data-hermes-theme="t3-code-theme"] [data-t3-row-provider] {
-  flex: none; width: 14px; height: 14px; opacity: .6; background: center / contain no-repeat;
-}`
-  document.head.append(style)
+  if (!host?.listPersistedSessions || !host.state?.connectionId || !sdk.atom || !sdk.useValue || !sdk.useTheme || !sdk.SESSION_ROW_AREAS) return
   const $rows = sdk.atom(new Map()), $connections = sdk.atom([])
-  let loading = false, loadedAt = 0
-  const load = (maxAge = ROW_CARD_REFRESH_MS) => {
-    if (loading || Date.now() - loadedAt < maxAge) return
-    loading = true
+  // An unlisted row (a chat not saved yet, or one past the list limit) gets one
+  // early re-read, then waits for the regular refresh like every other row.
+  const missed = new Set()
+  let loading = false, loadedAt = 0, loadedFor
+  const load = (connection, maxAge) => {
+    if (loading || (connection === loadedFor && Date.now() - loadedAt < maxAge)) return
+    loading = true; loadedFor = connection
     Promise.all([host.listPersistedSessions(null, { profile: 'all', limit: 500 }), host.connections?.() ?? []])
       .then(([page, connections]) => {
         const rows = new Map()
@@ -1686,20 +636,25 @@ function installRowCard(ctx, sdk) {
       .finally(() => { loading = false; loadedAt = Date.now() })
   }
   const useRow = sessionId => {
-    const info = sdk.useValue($rows).get(sessionId)
-    if (!info) queueMicrotask(() => load(ROW_CARD_MISS_REFRESH_MS))
-    return info
+    const active = useT3(sdk), info = sdk.useValue($rows).get(sessionId), connection = sdk.useValue(host.state.connectionId)
+    useEffect(() => {
+      if (!active) return
+      const retry = !info && !missed.has(sessionId)
+      if (retry) missed.add(sessionId)
+      load(connection, retry ? ROW_CARD_MISS_REFRESH_MS : ROW_CARD_REFRESH_MS)
+    })
+    return { active, info, connection }
   }
   function RowBadge({ sessionId }) {
-    const info = useRow(sessionId)
-    if (!info) return null
+    const { active, info } = useRow(sessionId)
+    if (!active || !info) return null
     if (!info.project) return jsx('span', { 'data-t3-row-badge': 'home', 'aria-hidden': 'true' })
     return jsx('span', { 'data-t3-row-badge': '', 'aria-hidden': 'true', children: info.project.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() })
   }
   function RowFoot({ sessionId }) {
-    const info = useRow(sessionId), connections = sdk.useValue($connections)
-    const active = sdk.useValue(host.state.connectionId)
-    const owner = info?.owner || active || 'local'
+    const { active, info, connection: current } = useRow(sessionId), connections = sdk.useValue($connections)
+    if (!active) return null
+    const owner = info?.owner || current || 'local'
     const connection = connections.find(c => c.id === owner)
     const remote = owner !== 'local' && connection?.kind !== 'local'
     const label = connection?.label || owner
@@ -1711,87 +666,12 @@ function installRowCard(ctx, sdk) {
   }
   ctx.register({ id: 'row-badge', area: sdk.SESSION_ROW_AREAS.leading, data: { render: ({ sessionId }) => jsx(RowBadge, { sessionId }) } })
   ctx.register({ id: 'row-foot', area: sdk.SESSION_ROW_AREAS.trailing, data: { render: ({ sessionId }) => jsx(RowFoot, { sessionId }) } })
-  const unConnection = host.state.connectionId.listen?.(() => load(0))
-  const unFocused = host.state.focusedStoredSessionId?.listen?.(() => load())
-  ctx.onDispose(() => { unConnection?.(); unFocused?.(); style.remove() })
-  load(0)
 }
 
-// Hermes mounts an opened chat scrolled to the top and jumps to the bottom a
-// few frames later, and a long chat is never cached, so every open blinked.
-// From the route change, hide the primary transcript until its new rows are on
-// screen and pinned to the bottom, capped so a stuck load never hides the chat.
-const SWITCH_FADE_MAX_MS = 300
-function installSwitchFade(ctx, sdk) {
-  const focused = sdk?.host?.state?.focusedStoredSessionId
-  if (!focused?.listen || typeof requestAnimationFrame === 'undefined') return
-  const root = document.documentElement
-  const viewport = () => document.querySelector('[data-chat-surface][data-composer-target="main"] [data-slot="aui_thread-viewport"]')
-  const userRows = el => Array.from(el?.querySelectorAll('[data-slot="aui_user-message-root"]') || [])
-  let hash = location.hash, frame = 0, pending = 0
-  const stop = () => { cancelAnimationFrame(frame); frame = 0; root.removeAttribute('data-t3-switching') }
-  function start() {
-    // Only a route change swaps the primary transcript; focusing a tile does not.
-    if (location.hash === hash) return false
-    hash = location.hash
-    if (!focused.get() || root.dataset.hermesTheme !== 't3-code-theme' || !viewport()) return true
-    stop()
-    const old = new Set(userRows(viewport()))
-    const t0 = performance.now()
-    let settled = 0
-    root.setAttribute('data-t3-switching', '')
-    const check = () => {
-      const vp = viewport(), rows = userRows(vp)
-      const fresh = rows.length > 0 && rows.every(row => !old.has(row))
-      const bottom = vp && vp.scrollHeight - vp.scrollTop - vp.clientHeight <= 2
-      // Two settled frames: the sticky bubble's fade lands one frame late.
-      settled = fresh && bottom ? settled + 1 : 0
-      if (settled >= 2 || performance.now() - t0 > SWITCH_FADE_MAX_MS) stop()
-      else frame = requestAnimationFrame(check)
-    }
-    frame = requestAnimationFrame(check)
-    return true
-  }
-  // The focus store can update before the router writes the hash: retry once.
-  const unlisten = focused.listen(() => {
-    cancelAnimationFrame(pending)
-    if (!start()) pending = requestAnimationFrame(start)
-  })
-  ctx.onDispose(() => { unlisten(); cancelAnimationFrame(pending); stop() })
-}
-
-// Runs the check in the real app, once per group as it first appears, and
-// warns once per new set of misses so a Hermes update cannot break it silently.
-function installDomCheck(ctx, sdk) {
-  if (typeof MutationObserver === 'undefined') return
-  const seen = new Set(), missing = new Set()
-  let timer = 0
-  function run() {
-    timer = 0
-    if (document.documentElement.dataset.hermesTheme !== 't3-code-theme') return
-    const result = checkDomHooks()
-    const fresh = result.checked.filter(g => !seen.has(g))
-    if (!fresh.length) return
-    fresh.forEach(g => seen.add(g))
-    result.missing.filter(m => fresh.includes(m.split(':')[0])).forEach(m => missing.add(m))
-    ctx.storage.set('domCheck.v1', { at: new Date().toISOString(), checked: Array.from(seen), missing: Array.from(missing) })
-    if (seen.size === result.total) observer.disconnect()
-    if (!missing.size) return
-    const signature = JSON.stringify(Array.from(missing).sort())
-    // error level: packaged Hermes copies only renderer errors to desktop.log.
-    console.error('[t3-code-theme] Hermes DOM hooks missing:', Array.from(missing).join(', '))
-    if (ctx.storage.get('domCheck.warned', '') === signature) return
-    ctx.storage.set('domCheck.warned', signature)
-    sdk?.host?.notify?.({ kind: 'warning', title: 'T3 Code theme needs an update',
-      message: `Hermes changed markup the theme relies on (${missing.size} hook${missing.size === 1 ? '' : 's'}).`,
-      detail: Array.from(missing).join('\n') })
-  }
-  // Settle delay: let a newly mounted surface and the plugin's own sync finish.
-  const schedule = () => { if (!timer) timer = setTimeout(run, 1500) }
-  const observer = new MutationObserver(schedule)
-  observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-hermes-theme', 'aria-expanded'] })
-  ctx.onDispose(() => { observer.disconnect(); clearTimeout(timer) })
-  schedule()
+// Empty chat headline. No project name: the SDK exposes only the primary chat's
+// cwd, and a tile may belong to another project.
+function EmptyHero() {
+  return useT3(sdk) ? jsx('h1', { 'data-t3-empty-hero': '', children: 'What should we build?' }) : null
 }
 
 export default {
@@ -1801,23 +681,11 @@ export default {
     ctx.register({ id: 'theme', area: THEMES_AREA, data: {
       name: 't3-code-theme', label: 'T3 Code',
       description: 'Unofficial port of the standard T3 Code dark theme, based on its MIT source.',
-      colors, darkColors: colors, typography
+      colors, darkColors: colors, typography, customCSS: css + composerCss + rowCardCss
     } })
-    const style = document.createElement('style')
-    style.dataset.t3Chat = 'layout'
-    style.textContent = css
-    document.head.append(style)
-    ctx.onDispose(() => style.remove())
-    installPicker(ctx, sdk)
-    installComposerExtras(ctx, sdk)
+    installModelLabel(ctx, sdk)
     installRowCard(ctx, sdk)
-    installSwitchFade(ctx, sdk)
-    installDomCheck(ctx, sdk)
-    // No project name here: the SDK exposes only the primary chat's cwd, and a
-    // tile may belong to another project.
-    ctx.register({ id: 'empty-hero', area: CHAT_EMPTY_AREA, data: {
-      render: () => jsx('h1', { 'data-t3-hero': '', 'data-t3-empty-hero': '', children: 'What should we build?' })
-    } })
+    if (sdk.useTheme) ctx.register({ id: 'empty-hero', area: CHAT_EMPTY_AREA, data: { render: () => jsx(EmptyHero, {}) } })
     // One-time activation only; don't override later user theme choices.
     // No restore on dispose: it also runs on hot reload, and Hermes already
     // falls back to its default skin when this theme is unregistered.

@@ -4,7 +4,7 @@
 const {chromium}=require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../desktop/plugin.js'),'utf8');
-const css=source.match(/const pickerCss = `([\s\S]*?)\n`/)[1];
+const css=source.match(/const composerCss = `([\s\S]*?)\n`/)[1];
 const T3='"Ask anything, @tag files/folders, or / for commands"';
 (async()=>{const browser=await chromium.launch();try{
 const page=await browser.newPage();

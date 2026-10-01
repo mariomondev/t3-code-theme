@@ -1,88 +1,35 @@
-// Session tiles (a chat opened in another tab, e.g. from a project): Hermes
-// puts data-tour only on the primary pill, so the theme must find the tile's
-// pill itself or the tile renders half-native.
+// Session tiles (a chat opened in another tab) and empty chats, with CSS alone.
+// Hermes puts data-tour only on the primary pill, so the tile's pill is matched
+// as the button right before the reasoning pill, or as the first menu button of
+// the controls when the model has no reasoning levels. An empty chat gets the T3
+// headline with the composer in the middle, unless a bot owns the empty state.
 const {chromium}=require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../desktop/plugin.js'),'utf8');
-const layoutCss=source.match(/const css = `([\s\S]*?)\n`/)[1];
-const pickerCss=source.match(/const pickerCss = `([\s\S]*?)\n`/)[1].replace(/\$\{[^}]+\}/g,'none');
-const composer=(tour,label)=>`<div data-slot="composer-fade"><div class="grid">
+const css=source.match(/const css = `([\s\S]*?)\n`/)[1]+source.match(/const composerCss = `([\s\S]*?)\n`/)[1].replace(/\$\{[^}]+\}/g,'none');
+const composer=(tour,reasoning=true)=>`<div data-slot="composer-fade"><div class="grid">
   <div class="[grid-area:menu]"><button><i class="codicon codicon-add"></i></button></div>
   <div class="[grid-area:input]"><div data-slot="composer-rich-input"></div></div>
-  <div class="[grid-area:controls]"><div class="flex"><button ${tour} aria-label="${label}"><span>GPT-6-Sol</span></button><button data-testid="reasoning-pill" aria-label="Effort: Low"><span>Low</span></button></div>
+  <div class="[grid-area:controls]"><div class="flex"><button ${tour} aria-label="Model" aria-haspopup="menu"><span>GPT-6-Sol</span></button>${reasoning?'<button data-testid="reasoning-pill" aria-haspopup="menu"><span>Low</span></button>':''}</div>
   <div class="flex items-center"><button aria-label="Voice dictation">m</button></div></div></div></div>`;
+const hero='<h1 data-t3-empty-hero>What should we build?</h1>';
+const surface=(id,target,inner)=>`<main data-chat-surface id="${id}" data-composer-target="${target}" style="position:relative;height:600px">${inner}
+  <div data-slot="composer-dock" style="position:absolute;bottom:0;height:100px">${composer(target==='main'?'data-tour="model-pill"':'',id!=='chat')}</div></main>`;
 (async()=>{const browser=await chromium.launch();try{
 const page=await browser.newPage();
-await page.setContent(`<html data-hermes-theme="t3-code-theme"><head><style>${layoutCss}</style></head><body>
-<main data-chat-surface data-composer-target="main">${composer('data-tour="model-pill"','Model · ChatGPT or Codex Subscription: gpt-6-sol')}</main>
-<main data-chat-surface data-composer-target="tile:1" id="tile">${composer('','Model · ChatGPT or Codex Subscription: gpt-6-sol')}
-  <div class="empty"><h1 data-t3-hero data-t3-empty-hero>What should we build?</h1></div>
-  <div data-slot="composer-dock"></div></main>
-<main data-chat-surface id="bot"><div class="empty"><h1 data-t3-hero data-t3-empty-hero>What should we build?</h1><div data-slot="bot_chat_empty">Bot</div></div></main>
-</body></html>`);
-await page.addScriptTag({content:source.replace(/^import .*\n/gm,'').replace('export default','globalThis.plugin =')});
-const result=await page.evaluate(async()=>{
-  const atom=v=>({get:()=>v,listen:()=>()=>{}});
-  const providers=[{slug:'openai-codex',name:'ChatGPT or Codex Subscription',models:['gpt-6-sol']}];
-  const q={queryKey:['model-options','default','s1','owner','local'],state:{data:{providers}},getObserversCount:()=>1};
-  const sdk={queryClient:{getQueryCache:()=>({findAll:()=>[q],subscribe:()=>()=>{}})},
-    // Tile focused: the owner-bound catalog does not resolve, as in the real app.
-    host:{state:{activeSessionId:atom('s1'),focusedSessionId:atom('tile-runtime'),focusedSessionOwner:atom({connectionId:'local',profile:'default'})}}};
-  const disposers=[];const ctx={onDispose:fn=>disposers.push(fn),storage:{get:(k,d)=>d,set(){}}};
-  installPicker(ctx,sdk);await new Promise(r=>setTimeout(r,50));
-  const tilePill=document.querySelector('#tile [aria-label^="Model"]');
-  const primary=document.querySelector('[data-tour="model-pill"]');
-  const order=e=>getComputedStyle(e).order;
-  const out={marked:tilePill.hasAttribute('data-t3-model-pill'),primaryMarked:primary.hasAttribute('data-t3-model-pill'),
-    tileIcon:tilePill.dataset.t3Provider,primaryIcon:primary.dataset.t3Provider,
-    pillOrder:order(tilePill),reasoningOrder:order(document.querySelector('#tile [data-testid="reasoning-pill"]')),
-    voiceMarked:document.querySelector('#tile [aria-label="Voice dictation"]').hasAttribute('data-t3-model-pill'),
-    heroTile:getComputedStyle(document.querySelector('#tile [data-t3-empty-hero]')).display,
-    heroBot:getComputedStyle(document.querySelector('#bot [data-t3-empty-hero]')).display};
-  document.documentElement.dataset.hermesTheme='nous';
-  out.heroOtherTheme=getComputedStyle(document.querySelector('#tile [data-t3-empty-hero]')).display;
-  document.documentElement.dataset.hermesTheme='t3-code-theme';
-  disposers.forEach(fn=>fn());
-  out.cleaned=!tilePill.hasAttribute('data-t3-model-pill')&&!tilePill.dataset.t3Provider&&!primary.dataset.t3Provider;
-  return out;
+await page.setContent(`<html data-hermes-theme="t3-code-theme"><head><style>${css}</style></head><body>
+${surface('main','main',`<div>${hero}</div>`)}${surface('tile','tile:1',`<div>${hero}</div>`)}
+${surface('bot','tile:2',`<div>${hero}<div data-slot="bot_chat_empty">Bot</div></div>`)}${surface('chat','tile:3','<div><p>A message</p></div>')}</body></html>`);
+const r=await page.evaluate(()=>{const q=(id,s)=>document.querySelector(`#${id} ${s}`),cs=(id,s)=>getComputedStyle(q(id,s));
+  const pill=id=>q(id,'[aria-label="Model"]');
+  return {order:{primary:cs('main','[aria-label="Model"]').order,tile:cs('tile','[aria-label="Model"]').order,noReasoning:cs('chat','[aria-label="Model"]').order,reasoning:cs('tile','[data-testid="reasoning-pill"]').order,voice:cs('tile','[aria-label="Voice dictation"]').order},
+    size:[getComputedStyle(pill('main')).fontSize,getComputedStyle(pill('tile')).fontSize,getComputedStyle(pill('tile')).height],
+    hero:{main:cs('main','h1').display,tile:cs('tile','h1').display,bot:cs('bot','h1').display,size:cs('tile','h1').fontSize},
+    dockTop:{main:cs('main','[data-slot="composer-dock"]').top,tile:cs('tile','[data-slot="composer-dock"]').top,bot:cs('bot','[data-slot="composer-dock"]').top,chat:cs('chat','[data-slot="composer-dock"]').top}};
 });
-assert(result.marked,'Tile pill must be found without data-tour');
-assert(!result.primaryMarked,'Primary pill keeps its native data-tour hook only');
-assert(!result.voiceMarked,'Only the model pill is marked, never another control');
-assert.equal(result.tileIcon,'openai-codex','Tile pill gets its provider icon from its own label');
-assert.equal(result.primaryIcon,'openai-codex');
-assert.equal(result.pillOrder,'1','Tile model pill comes first, like T3');
-assert.equal(result.reasoningOrder,'2');
-assert.notEqual(result.heroTile,'none','Empty tile shows the T3 headline');
-assert.equal(result.heroBot,'none','A bot that owns the empty state keeps it alone');
-assert(result.cleaned,'Dispose removes tile markers and icons');
-assert.equal(result.heroOtherTheme,'none','Other themes never show the headline');
-
-// Picker in a tile: enhanced only while THAT tile holds focus, from its own
-// owner-bound catalog; any mismatch keeps the native picker.
-const picker=await page.evaluate(async()=>{
-  const menuHtml='<div id="tile-menu" data-slot="dropdown-menu-content"><div data-slot="dropdown-menu-search"><input placeholder="Search models"></div><div data-slot="dropdown-menu-group"><div data-slot="dropdown-menu-item"><span>ChatGPT or Codex Subscription</span></div><div data-slot="dropdown-menu-sub-trigger"><span class="flex min-w-0 flex-1 items-center gap-1.5"><span class="min-w-0 truncate">GPT-6-sol</span><span class="text-(--ui-text-tertiary)">Low</span></span><i class="codicon codicon-chevron-right"></i></div></div></div>';
-  document.body.insertAdjacentHTML('beforeend',menuHtml);
-  const pill=document.querySelector('#tile [aria-label^="Model"]');
-  pill.setAttribute('aria-controls','tile-menu');pill.setAttribute('aria-expanded','true');
-  const mut=v=>{const fns=[];return {v,get(){return this.v},set(x){this.v=x;fns.forEach(f=>f())},listen(f){fns.push(f);return()=>{}}}};
-  const stored=mut('1');
-  const providers=[{slug:'openai-codex',name:'ChatGPT or Codex Subscription',models:['gpt-6-sol']}];
-  const q=(key,obs)=>({queryKey:key,state:{data:{providers}},getObserversCount:()=>obs});
-  const queries=[q(['model-options','default','s1','owner','local'],1),q(['model-options','default','rt-tile','owner','local'],1)];
-  const sdk={queryClient:{getQueryCache:()=>({findAll:({queryKey})=>queries.filter(x=>JSON.stringify(x.queryKey)===JSON.stringify(queryKey)),subscribe:()=>()=>{}})},
-    host:{state:{activeSessionId:mut('s1'),focusedSessionId:mut('rt-tile'),focusedStoredSessionId:stored,focusedSessionOwner:mut({connectionId:'local',profile:'default'})}}};
-  const disposers=[];installPicker({onDispose:fn=>disposers.push(fn),storage:{get:(k,d)=>d,set(){}}},sdk);
-  await new Promise(r=>setTimeout(r,50));
-  const menu=document.getElementById('tile-menu');
-  const focused={enhanced:menu.hasAttribute('data-t3-picker'),row:menu.querySelector('[data-t3-model]')?.getAttribute('data-t3-model')};
-  stored.set('2');await new Promise(r=>setTimeout(r,50));
-  const otherFocused=menu.hasAttribute('data-t3-picker');
-  disposers.forEach(fn=>fn());
-  return {focused,otherFocused};
-});
-assert(picker.focused.enhanced,'Focused tile gets the T3 picker');
-assert.equal(picker.focused.row,'gpt-6-sol','Rows are identified from the tile\'s own catalog');
-assert(!picker.otherFocused,'Another session focused: the tile picker falls back to native');
-console.log('PASS tiles: pill found without data-tour, focused-tile picker with native fallback, icon and order, empty-session headline, bot stands alone, cleanup');
+assert.deepEqual(r.order,{primary:'1',tile:'1',noReasoning:'1',reasoning:'2',voice:'4'},'Model pill first, then effort, in the primary chat and in a tile; other controls keep their place');
+assert.deepEqual(r.size,['14px','14px','28px'],'The tile pill gets the same T3 control size as the primary one');
+assert.deepEqual(r.hero,{main:'block',tile:'block',bot:'none',size:'30px'},'Empty chats show the headline; a bot that owns the empty state keeps it alone');
+assert.deepEqual(r.dockTop,{main:'300px',tile:'300px',bot:'500px',chat:'500px'},'Only a truly empty chat centers its composer');
+console.log('PASS tiles and empty chats: pill found without data-tour, headline and centered composer, bot stands alone');
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});

@@ -1,19 +1,14 @@
-// T3 display labels: the composer pill and traits trigger must read like T3 Code.
+// T3 display labels: the composer pill must read like T3 Code.
 const fs=require('node:fs'),assert=require('node:assert/strict'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../desktop/plugin.js'),'utf8');
 const sandbox={};vm.createContext(sandbox);
-vm.runInContext(source.replace(/^import .*\n/gm,'').replace('export default','globalThis.plugin =')+'\nglobalThis.api={t3ModelLabel,t3EffortLabel,providerShortName,nativeModelParts,providerSvg}',sandbox);
-const {t3ModelLabel,t3EffortLabel,providerShortName,nativeModelParts,providerSvg}=sandbox.api;
+vm.runInContext(source.replace(/^import .*\n/gm,'').replace('export default','globalThis.plugin =')+'\nglobalThis.api={t3ModelLabel,nativeModelParts,providerSvg}',sandbox);
+const {t3ModelLabel,nativeModelParts,providerSvg}=sandbox.api;
 assert.equal(t3ModelLabel('claude-opus-5-5[1m]'),'Claude Opus 5.5');
 assert.equal(t3ModelLabel('claude-haiku-4-5-20251001'),'Claude Haiku 4.5');
 assert.equal(t3ModelLabel('gpt-6-astra'),'GPT-6-Astra');
 assert.equal(t3ModelLabel('gpt-6-astra-fast'),'GPT-6-Astra Fast','Fast variant stays visible on the pill');
 assert.equal(t3ModelLabel('gemini-3.1-pro-preview'),'Gemini 3.1 Pro');
-assert.equal(t3EffortLabel('Med','claude-opus-5-5[1m]'),'Medium · 1M');
-assert.equal(t3EffortLabel('High','gpt-6-astra'),'High','No context suffix without a context tag');
-assert.equal(t3EffortLabel('Custom','x'),'Custom','Unknown efforts pass through');
-assert.equal(providerShortName({slug:'claude-subscription-directsdk-experimental',name:'Claude Subscription DirectSDK (Experimental)'}),'Claude');
-assert.equal(providerShortName({slug:'nous',name:'Nous Portal'}),'Nous Portal');
 // Row names must equal Hermes' modelDisplayParts, or rows stay unidentified.
 const parts=m=>{const p=nativeModelParts(m);return p.name+(p.tag?' | '+p.tag:'')};
 assert.equal(parts('claude-sonnet-5[1m]'),'Sonnet 5 | 1M');
@@ -29,4 +24,4 @@ assert(mark('groq').includes('M12.036 2c'),'Groq mark');assert(mark('nous').incl
 assert(mark('groq').includes('fill="#fff"'),'Single-color marks take the requested fill');
 assert.equal(providerSvg('deepseek').colored,true,'Brand-colored marks paint as images');
 assert(mark('groqish').includes('<text'),'Patterns match whole slugs only');
-console.log('PASS T3 model, effort and provider labels');
+console.log('PASS T3 model labels and provider marks');
