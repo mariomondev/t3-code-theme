@@ -54,7 +54,7 @@ To match T3, the stylesheet also hides or swaps a few Hermes details. Next to th
 
 ## Optional: model picker, tabs and more
 
-Some parts of T3 Code cannot be done with Hermes' plugin SDK yet: the model picker with its provider rail and favorites, provider icons in the composer, rounded chat tabs and the project crumb above each pane. The slots they need are requested upstream.
+Some parts of T3 Code cannot be done with Hermes' plugin SDK yet: the model picker with its provider rail and favorites, provider icons in the composer, rounded chat tabs and the project crumb above each pane. The slots they need are requested upstream: the model picker in [#130958](https://github.com/NousResearch/hermes-agent/issues/130958), and the pill, tab and pane header slots in [#130959](https://github.com/NousResearch/hermes-agent/issues/130959).
 
 Until Hermes adds them, a separate plugin provides these parts: [t3-code-extras](https://github.com/mariomondev/t3-code-extras). It is optional and the theme works without it. It is not in the Hermes plugin catalog and nobody has reviewed it, because it changes Hermes Desktop's own page at runtime instead of using the SDK, so a Hermes update can break it. Read its README before installing it.
 
